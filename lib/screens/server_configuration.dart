@@ -23,7 +23,7 @@ class _ServerConfigScreenState extends State<ServerConfigScreen> {
     super.initState();
 
     _loadDefaultConfig();
-    _loadSavedConfig();
+    _loadSavedConfig(context);
   }
 
   Future<void> _loadDefaultConfig()async {
@@ -33,8 +33,8 @@ class _ServerConfigScreenState extends State<ServerConfigScreen> {
     _databaseNameController.text = "Techsysdb";
   }
 
-  Future<void> _loadSavedConfig() async {
-    await Provider.of<AuthProvider>(context, listen: false).loadServerConfig();
+  Future<void> _loadSavedConfig(BuildContext context) async {
+    await Provider.of<AuthProvider>(context, listen: false).loadServerConfig(context);
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
 
     if (authProvider.serverUrl != null) {

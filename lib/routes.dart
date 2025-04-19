@@ -20,20 +20,20 @@ class RouteGenerator {
         return MaterialPageRoute(builder: (_) => const DashboardScreen());
       case '/sales-orders':
         return MaterialPageRoute(builder: (_) => const SalesOrdersScreen());
-      case '/purchase-orders':
-        return MaterialPageRoute(builder: (_) => const PurchaseOrdersScreen());
+      // case '/purchase-orders':
+        // return MaterialPageRoute(builder: (_) => const PurchaseOrdersScreen());
       case '/sales-order-detail':
         return MaterialPageRoute(
           builder: (_) => SalesOrderDetailScreen(
-            orderId: settings.arguments as String,
+            soNumber: settings.arguments as String
           ),
         );
-      case '/purchase-order-detail':
-        return MaterialPageRoute(
-          builder: (_) => PurchaseOrderDetailScreen(
-            orderId: settings.arguments as String,
-          ),
-        );
+      // case '/purchase-order-detail':
+      //   return MaterialPageRoute(
+      //     builder: (_) => PurchaseOrderDetailScreen(
+      //       orderId: settings.arguments as String,
+      //     ),
+      //   );
       case '/add-lot':
         return MaterialPageRoute(builder: (_) => const AddLotScreen());
       default:

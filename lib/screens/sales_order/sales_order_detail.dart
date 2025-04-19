@@ -1,17 +1,19 @@
 import 'package:delivery_note_app/providers/order_provider.dart';
-import 'package:delivery_note_app/widgets/widgets.dart';
+import 'package:delivery_note_app/widgets/item_card.dart';
+import 'package:delivery_note_app/widgets/summary_card.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-class SalesOrderDetailScreen extends StatelessWidget {
-  final String orderId;
+import '../../models/item_model.dart';
 
-  const SalesOrderDetailScreen({super.key, required this.orderId});
+class SalesOrderDetailScreen extends StatelessWidget {
+  final String soNumber;
+
+  const SalesOrderDetailScreen({super.key, required this.soNumber});
 
   @override
   Widget build(BuildContext context) {
-    final order = Provider.of<OrderProvider>(context).getSalesOrderById(orderId);
-    final items = Provider.of<OrderProvider>(context).getItemsForOrder(orderId);
+    final order = Provider.of<OrderProvider>(context).getSalesOrderById(soNumber);
 
     if (order == null) {
       return Scaffold(
@@ -21,7 +23,7 @@ class SalesOrderDetailScreen extends StatelessWidget {
     }
 
     return Scaffold(
-      appBar: AppBar(title: Text('Sales Order #${order.id}')),
+      appBar: AppBar(title: Text('SO #${order.soNumber}')),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -29,26 +31,45 @@ class SalesOrderDetailScreen extends StatelessWidget {
           children: [
             SummaryCard(
               title: order.customerName,
-              subtitle: 'Ref No: ${order.refNumber}',
+              subtitle: 'Ref No: ${order.refNo}',
               details: [
-                'SO Issue Date: ${order.issueDate.day}-${order.issueDate.month}-${order.issueDate.year}',
+                'SO Date: ${order.soDate.day}-${order.soDate.month}-${order.soDate.year}',
                 'Salesman: ${order.salesmanName}',
+                'Location: ${order.locationCode}',
+                'Total Items: ${order.items.length}',
               ],
               status: order.isPending ? 'PENDING' : 'COMPLETED',
               statusColor: order.isPending ? Colors.orange : Colors.green,
             ),
             const SizedBox(height: 24),
-            const Text('Items', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const Text('Item Details',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
-            ...items.map((item) => ItemCard(item: item)),
-            const SizedBox(height: 16),
-            if (order.isPending)
-              Center(
-                child: ElevatedButton(
-                  onPressed: () => Navigator.of(context).pushNamed('/add-lot'),
-                  child: const Text('Add Lot'),
-                ),
+            // Display all items in the order
+            ...order.items.map((item) => ItemCard(
+              item: Item(
+                id: item.itemCode,
+                name: item.itemName,
+                code: item.itemCode,
+                stock: item.stockQty,
+                orderedQuantity: item.qtyOrdered,
+                unit: item.unit,
+                isSerialized: item.serialYN,
+                isNonInventory: item.nonInventory,
               ),
+              soNumber: order.soNumber,
+              onAddLotPressed: item.serialYN
+                  ? () => Navigator.of(context).pushNamed(
+                '/add-lot',
+                arguments: {
+                  'soNumber': order.soNumber,
+                  'itemCode': item.itemCode,
+                  'orderedQty': item.qtyOrdered,
+                  'availableStock': item.stockQty,
+                },
+              )
+                  : null,
+            )),
           ],
         ),
       ),

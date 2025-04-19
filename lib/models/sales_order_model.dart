@@ -1,17 +1,91 @@
 class SalesOrder {
-  final String id;
+  final String companyCode;
+  final String soNumber;
+  final DateTime soDate;
+  final String customerCode;
   final String customerName;
-  final String refNumber;
-  final DateTime issueDate;
+  final String salesmanCode;
   final String salesmanName;
+  final String refNo;
+  final String locationCode;
   final bool isPending;
+  final List<SalesOrderItem> items; // List of items
 
   SalesOrder({
-    required this.id,
+    required this.companyCode,
+    required this.soNumber,
+    required this.soDate,
+    required this.customerCode,
     required this.customerName,
-    required this.refNumber,
-    required this.issueDate,
+    required this.salesmanCode,
     required this.salesmanName,
-    this.isPending = true,
+    required this.refNo,
+    required this.locationCode,
+    required this.isPending,
+    required this.items,
+  });
+
+  factory SalesOrder.fromJson(Map<String, dynamic> json) {
+    return SalesOrder(
+      companyCode: json['CmpyCode'].toString(),
+      soNumber: json['SoNumber'].toString(),
+      soDate: DateTime.parse(json['SODate'].toString()),
+      customerCode: json['CustomerCode'].toString(),
+      customerName: json['CustomerName'].toString(),
+      salesmanCode: json['SalesmanCode'].toString(),
+      salesmanName: json['SalesmanName'].toString(),
+      refNo: json['RefNo'].toString(),
+      locationCode: json['LocCode'].toString(),
+      isPending: true, // Add your actual status logic here
+      items: [
+        SalesOrderItem(
+          itemCode: json['ItemCode'].toString(),
+          itemName: json['ItemName'].toString(),
+          unit: json['Unit'].toString(),
+          qtyOrdered: double.parse(json['QtyOrdered'].toString()),
+          stockQty: double.parse(json['StockQty'].toString()),
+          nonInventory: json['NonInventory'].toString() == '1',
+          serialYN: json['SerialYN'].toString() == '1',
+        )
+      ],
+    );
+  }
+
+  // Helper method to add an item to this order
+  void addItem(Map<String, dynamic> json) {
+    items.add(
+        SalesOrderItem(
+          itemCode: json['ItemCode'].toString(),
+          itemName: json['ItemName'].toString(),
+          unit: json['Unit'].toString(),
+          qtyOrdered: double.parse(json['QtyOrdered'].toString()),
+          stockQty: double.parse(json['StockQty'].toString()),
+          nonInventory: json['NonInventory'].toString() == '1',
+          serialYN: json['SerialYN'].toString() == '1',
+        )
+    );
+  }
+
+  // Helper method to get serialized items
+  List<SalesOrderItem> get serializedItems => items.where((item) => item.serialYN).toList();
+}
+
+class SalesOrderItem {
+  final String itemCode;
+  final String itemName;
+  final String unit;
+  final double qtyOrdered;
+  final double stockQty;
+  final bool nonInventory;
+  final bool serialYN;
+
+  SalesOrderItem({
+    required this.itemCode,
+    required this.itemName,
+    required this.unit,
+    required this.qtyOrdered,
+    required this.stockQty,
+    required this.nonInventory,
+    required this.serialYN,
   });
 }

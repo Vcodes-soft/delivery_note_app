@@ -1,5 +1,6 @@
 import 'package:delivery_note_app/providers/auth_provider.dart';
 import 'package:delivery_note_app/providers/order_provider.dart';
+import 'package:delivery_note_app/widgets/dashboard_card.dart';
 import 'package:delivery_note_app/widgets/widgets.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -18,8 +19,8 @@ class DashboardScreen extends StatelessWidget {
           IconButton(
             icon: const Icon(Icons.logout),
             onPressed: () {
-              Provider.of<AuthProvider>(context, listen: false).logout();
-              Navigator.of(context).pushReplacementNamed('/');
+              Provider.of<AuthProvider>(context, listen: false).logout(context);
+              // Navigator.of(context).pushReplacementNamed('/');
             },
           ),
         ],
@@ -33,28 +34,28 @@ class DashboardScreen extends StatelessWidget {
         children: [
           DashboardCard(
             title: 'Total Sales Orders',
-            value: orderProvider.totalSalesOrders.toString(),
+            value: "",
             icon: Icons.shopping_cart,
             color: Colors.blue,
             onTap: () => Navigator.of(context).pushNamed('/sales-orders'),
           ),
           DashboardCard(
             title: 'Pending Sales Orders',
-            value: orderProvider.totalPendingSalesOrders.toString(),
+            value: "",
             icon: Icons.pending_actions,
             color: Colors.orange,
             onTap: () => Navigator.of(context).pushNamed('/sales-orders'),
           ),
           DashboardCard(
             title: 'Total Purchase Orders',
-            value: orderProvider.totalPurchaseOrders.toString(),
+            value: "",
             icon: Icons.inventory,
             color: Colors.green,
             onTap: () => Navigator.of(context).pushNamed('/purchase-orders'),
           ),
           DashboardCard(
             title: 'Pending Purchase Orders',
-            value: orderProvider.totalPendingPurchaseOrders.toString(),
+            value: "123",
             icon: Icons.pending,
             color: Colors.red,
             onTap: () => Navigator.of(context).pushNamed('/purchase-orders'),
