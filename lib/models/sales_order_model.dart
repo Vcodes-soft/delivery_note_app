@@ -46,6 +46,7 @@ class SalesOrder {
           stockQty: double.parse(json['StockQty'].toString()),
           nonInventory: json['NonInventory'].toString() == '1',
           serialYN: json['SerialYN'].toString() == '1',
+          qtyIssued: 0,
         )
       ],
     );
@@ -62,6 +63,7 @@ class SalesOrder {
           stockQty: double.parse(json['StockQty'].toString()),
           nonInventory: json['NonInventory'].toString() == '1',
           serialYN: json['SerialYN'].toString() == '1',
+          qtyIssued: 0,
         )
     );
   }
@@ -75,17 +77,44 @@ class SalesOrderItem {
   final String itemName;
   final String unit;
   final double qtyOrdered;
+  double qtyIssued;
   final double stockQty;
   final bool nonInventory;
   final bool serialYN;
+  final List<ItemSerial> serials; // Track serial numbers for this item
 
   SalesOrderItem({
     required this.itemCode,
     required this.itemName,
     required this.unit,
     required this.qtyOrdered,
+    required this.qtyIssued,
     required this.stockQty,
     required this.nonInventory,
     required this.serialYN,
+    List<ItemSerial>? serials,
+  }) : serials = serials ?? [];
+
+  // Add a serial number to this item
+  void addSerial(String serialNo) {
+    serials.add(ItemSerial(
+      serialNo: serialNo,
+      sNo: serials.length + 1, // Auto-increment position
+    ));
+  }
+
+  // Check if serial number already exists
+  bool hasSerial(String serialNo) {
+    return serials.any((s) => s.serialNo == serialNo);
+  }
+}
+
+class ItemSerial {
+  final String serialNo;
+  final int sNo;
+
+  ItemSerial({
+    required this.serialNo,
+    required this.sNo,
   });
 }

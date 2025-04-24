@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:fluttertoast/fluttertoast.dart';
 import 'package:provider/provider.dart';
 import 'package:delivery_note_app/providers/auth_provider.dart';
-import 'package:toast_message_bar/toast_message_bar.dart';
 
 class ServerConfigScreen extends StatefulWidget {
   const ServerConfigScreen({super.key});
@@ -96,14 +96,15 @@ class _ServerConfigScreenState extends State<ServerConfigScreen> {
   }
 
   Future<void> _showToastMessage(String message, Color color) async {
-    await ToastMessageBar(
+    Fluttertoast.showToast(
+      msg: message,
+      toastLength: Toast.LENGTH_SHORT,
+      gravity: ToastGravity.BOTTOM,
+      timeInSecForIosWeb: 1,
       backgroundColor: color,
-      title: color == Colors.green ? "SUCCESS" : "ERROR",
-      titleColor: Colors.white,
-      message: message,
-      messageColor: Colors.white,
-      duration: const Duration(seconds: 3),
-    ).show(context);
+      textColor: Colors.white,
+      fontSize: 16.0,
+    );
   }
 
   @override

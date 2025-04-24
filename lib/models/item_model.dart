@@ -4,6 +4,7 @@ class Item {
   final String code;
   final double stock;
   final double orderedQuantity;
+  final double currentQuantity;
   final String unit;
   final bool isSerialized;
   final bool isNonInventory;
@@ -14,6 +15,7 @@ class Item {
     required this.code,
     required this.stock,
     required this.orderedQuantity,
+    required this.currentQuantity,
     required this.unit,
     required this.isNonInventory,
     required this.isSerialized,

@@ -38,6 +38,7 @@ dependencies:
   shared_preferences:
   mssql_connection:
   toast_message_bar:
+  fluttertoast:
 
 dev_dependencies:
   flutter_test:
