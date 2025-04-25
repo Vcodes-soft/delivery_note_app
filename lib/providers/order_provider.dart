@@ -146,9 +146,8 @@ class OrderProvider with ChangeNotifier {
     // If validation fails, show error message and return
     if (!isValidForPosting) {
       notifyListeners();
-      // AppAlerts.appToast(
-      //     message:
-      //         "Validation failed. Please correct the following issues:\n$validationMessage");
+      AppAlerts.appToast(
+          message:"Delivery note validation failed, please check the log in above");
       // You could also show a more detailed dialog here
       return;
     }
