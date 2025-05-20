@@ -10,6 +10,7 @@ import 'package:flutter_datawedge/flutter_datawedge.dart';
 import 'package:intl/intl.dart';
 import 'package:mssql_connection/mssql_connection.dart';
 import 'package:delivery_note_app/models/sales_order_model.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class OrderProvider with ChangeNotifier {
   final MssqlConnection _sqlConnection = MssqlConnection.getInstance();
@@ -82,6 +83,9 @@ class OrderProvider with ChangeNotifier {
     validationMessage = "";
     isValidForPosting = true;
     final order = getSalesOrderById(soNumber);
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    final String companyCode = prefs.getString('companyCode') ?? "";
+    final String username = prefs.getString("username") ?? "";
     if (order == null) {
       print('Order not found for SO: $soNumber');
       AppAlerts.appToast(message: "Order not found for SO: $soNumber");
@@ -121,40 +125,41 @@ class OrderProvider with ChangeNotifier {
     if (!isValidForPosting) {
       notifyListeners();
       AppAlerts.appToast(
-          message:"Delivery note validation failed, please check the log in above");
+          message:
+              "Delivery note validation failed, please check the log in above");
       // You could also show a more detailed dialog here
       return;
     }
+
+    String deliveryNoteNumber = "DN00001";
 
     try {
       // 1. Create DeliveryNoteHeader
       final deliveryNoteHeader = DeliveryNoteHeader(
         cmpyCode: order.companyCode,
-        dnNumber:
-            'DN-${DateTime.now().millisecondsSinceEpoch}', // Temporary number
+        dnNumber: deliveryNoteNumber, // Temporary number
         locCode: order.locationCode,
         dates: DateTime.now(),
         customerCode: order.customerCode,
         salesmanCode: order.salesmanCode,
         soNumber: order.soNumber,
-        refNo: order.refNo,
+        refNo: order.refNo, // will later entered manually
         status: 'O', // Open status
         invStat: 'N', // Not invoiced
-        discount: 0,
-        curCode: 'AED', // Default currency
-        exRate: 1,
+        discount: 0, // from SO
+        curCode: 'AED', // from SO
+        exRate: 1, // from SO
         dnType: 'D', // Delivery type
-        qty: order.items.length,
-        dTime: TimeOfDay.now(),
-        loginUser: 'current_user', // Replace with actual user
-        creditLimitAmount: 0,
-        outstandingBalance: 0,
-        grossAmount:
-            order.items.fold(0, (sum, item) => sum + (0 * item.qtyOrdered)),
-        narration: '',
-        commissionYN: 'N',
-        supplier: '',
-        dyType: 'D',
+        qty: order.items.length, // from SO
+        dTime: TimeOfDay.now(), // time of day
+        loginUser: username,
+        creditLimitAmount: 0, // auto
+        outstandingBalance: 0, // auto
+        grossAmount: 0, // auto calculated maybe from frontend
+        narration: '', // manually add later
+        commissionYN: 'N', // from SO
+        supplier: '', // from SO
+        dyType: 'D', // Default D
       );
 
       // Post header
