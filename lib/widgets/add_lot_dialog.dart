@@ -27,6 +27,7 @@ class AddLotDialog extends StatefulWidget {
 
 class _AddLotDialogState extends State<AddLotDialog> {
   final TextEditingController _serialController = TextEditingController();
+  bool _isScanning = false;
 
   @override
   Widget build(BuildContext context) {
@@ -43,13 +44,20 @@ class _AddLotDialogState extends State<AddLotDialog> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Global validation toggle
-
-            // Scan button
+            // Scan button with loading state
             ElevatedButton.icon(
-              icon: const Icon(Icons.qr_code_scanner),
-              label: const Text('Scan Serial Number'),
-              onPressed: () => _scanSerial(context),
+              icon: _isScanning
+                  ? const SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(
+                  color: Colors.white,
+                  strokeWidth: 2,
+                ),
+              )
+                  : const Icon(Icons.qr_code_scanner),
+              label: Text(_isScanning ? 'Scanning...' : 'Scan Serial Number'),
+              onPressed: _isScanning ? null : () => _scanSerial(context),
             ),
             const SizedBox(height: 16),
             const Text('Or enter manually:'),
@@ -87,21 +95,36 @@ class _AddLotDialogState extends State<AddLotDialog> {
     );
   }
 
-  void _scanSerial(BuildContext context) async {
-    final scannedSerial = await showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Enter Serial Number'),
-        content: TextField(
-          autofocus: true,
-          decoration: const InputDecoration(hintText: 'Enter serial number'),
-          onSubmitted: (value) => Navigator.of(context).pop(value),
-        ),
-      ),
-    );
+  Future<void> _scanSerial(BuildContext context) async {
+    final orderProvider = Provider.of<OrderProvider>(context, listen: false);
 
-    if (scannedSerial != null && scannedSerial.isNotEmpty) {
-      await _addSerial(context, scannedSerial);
+    try {
+      setState(() => _isScanning = true);
+
+      // Start the scanner
+      await orderProvider.startScanning();
+
+      // Listen for scan results
+      orderProvider.addListener(() {
+        if (orderProvider.scannedBarcode != null && orderProvider.scannedBarcode!.isNotEmpty) {
+          _handleScannedBarcode(context, orderProvider.scannedBarcode!);
+          orderProvider.clearScannedBarcode(); // Clear after handling
+        }
+      });
+
+    } catch (e) {
+      setState(() => _isScanning = false);
+      AppAlerts.appToast(message: 'Failed to start scanner: ${e.toString()}');
+    }
+  }
+
+  void _handleScannedBarcode(BuildContext context, String barcode) async {
+    try {
+      await _addSerial(context, barcode);
+    } finally {
+      setState(() => _isScanning = false);
+      // Optionally stop scanning after successful scan
+      Provider.of<OrderProvider>(context, listen: false).stopScanner();
     }
   }
 
@@ -115,9 +138,7 @@ class _AddLotDialogState extends State<AddLotDialog> {
       );
       _serialController.clear();
     } catch (e) {
-
       AppAlerts.appToast(message: e.toString());
-
     }
   }
 
@@ -138,6 +159,8 @@ class _AddLotDialogState extends State<AddLotDialog> {
 
   @override
   void dispose() {
+    // Stop scanning when dialog is disposed
+    Provider.of<OrderProvider>(context, listen: false).stopScanner();
     _serialController.dispose();
     super.dispose();
   }

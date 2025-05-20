@@ -5,7 +5,7 @@ import 'package:delivery_note_app/screens/purchase_order/purchase_order.dart';
 import 'package:delivery_note_app/screens/purchase_order/purchase_order_detail.dart';
 import 'package:delivery_note_app/screens/sales_order/sales_order.dart';
 import 'package:delivery_note_app/screens/sales_order/sales_order_detail.dart';
-import 'package:delivery_note_app/screens/screens.dart';
+import 'package:delivery_note_app/screens/add_lot_screen.dart';
 import 'package:delivery_note_app/screens/server_configuration.dart';
 import 'package:flutter/material.dart';
 

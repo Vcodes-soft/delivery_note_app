@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:delivery_note_app/models/delivery_note_details.dart';
@@ -5,6 +6,8 @@ import 'package:delivery_note_app/models/delivery_note_header.dart';
 import 'package:delivery_note_app/models/inventory_detail_serialno.dart';
 import 'package:delivery_note_app/utils/app_alerts.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_datawedge/flutter_datawedge.dart';
+import 'package:intl/intl.dart';
 import 'package:mssql_connection/mssql_connection.dart';
 import 'package:delivery_note_app/models/sales_order_model.dart';
 
@@ -25,39 +28,9 @@ class OrderProvider with ChangeNotifier {
       notifyListeners();
 
       final result = await _sqlConnection.getData("""
-      SELECT 
-        A.CmpyCode, 
-        A.SoNumber,
-        A.Dates as SODate, 
-        A.CustomerCode, 
-        C.Name As CustomerName,
-        A.SalesmanCode, 
-        D.Name As SalesmanName, 
-        A.RefNo, 
-        B.ItemCode, 
-        Left(B.Description,50) as ItemName, 
-        B.Unit, 
-        B.QtyOrdered, 
-        E.Tqty as StockQty,
-        F.NonInventory, 
-        F.SerialYN,
-        A.LocCode
-      FROM 
-        SoHeader A, 
-        SoDetail B, 
-        Customers C, 
-        Salesman D, 
-        Vw_ClosingStockA E, 
-        Products F
-      WHERE 
-        A.CmpyCode = B.CmpyCode and A.SoNumber = B.SoNumber 
-        and A.CmpyCode = C.Cmpycode and A.CustomerCode = C.Customercode
-        and C.CmpyCode = D.Cmpycode and A.SalesmanCode = D.SalesmanCode
-        And B.CmpyCode = E.Cmpycode and B.ItemCode = E.Itemcode and A.LocCode = E.LocCode 
-        And B.CmpyCode = F.Cmpycode and B.ItemCode = F.Itemcode  
-        and A.Status <> 'C' and A.DelStat <> 'Y'
-      ORDER BY A.SoNumber, B.ItemCode
-    """);
+      SELECT * FROM VW_DM_SODetails
+      ORDER BY SoNumber, ItemCode
+      """);
 
       final data = jsonDecode(result) as List;
 
@@ -86,7 +59,6 @@ class OrderProvider with ChangeNotifier {
       notifyListeners();
     }
   }
-
   Future<List<SalesOrder>> getSalesOrdersByLocation(String locationCode) async {
     try {
       final result = await _sqlConnection.getData("""
@@ -107,6 +79,8 @@ class OrderProvider with ChangeNotifier {
   String validationMessage = '';
 
   Future<void> postDeliveryNote(BuildContext context, String soNumber) async {
+    validationMessage = "";
+    isValidForPosting = true;
     final order = getSalesOrderById(soNumber);
     if (order == null) {
       print('Order not found for SO: $soNumber');
@@ -119,23 +93,23 @@ class OrderProvider with ChangeNotifier {
       // Skip validation for non-inventory items
       if (!item.nonInventory) {
         // Check if stock is sufficient
-        if (item.stockQty < item.qtyOrdered) {
+        if (item.stockQty < item.qtyIssued) {
           isValidForPosting = false;
           validationMessage +=
-              'Insufficient stock for ${item.itemCode} - ${item.itemName}. Available: ${item.stockQty}, Ordered: ${item.qtyOrdered}\n';
+              'Insufficient stock for ${item.itemCode} - ${item.itemName}. Available: ${item.stockQty}, Issued: ${item.qtyIssued}\n';
         }
       }
 
-      // Check if qty issued equals qty ordered
-      if (item.qtyIssued != item.qtyOrdered) {
+      // Check if qty issued is <= qty ordered (but not greater)
+      if (item.qtyIssued > item.qtyOrdered) {
         isValidForPosting = false;
         validationMessage +=
-            'Quantity issued must equal quantity ordered for ${item.itemCode} - ${item.itemName}. Issued: ${item.qtyIssued}, Ordered: ${item.qtyOrdered}\n';
+        'Quantity issued cannot exceed quantity ordered for ${item.itemCode} - ${item.itemName}. Issued: ${item.qtyIssued}, Ordered: ${item.qtyOrdered}\n';
       }
 
       // Check serial numbers for serialized items
-      if (item.serialYN && item.qtyOrdered > 0) {
-        if (item.serials.length != item.qtyOrdered) {
+      if (item.serialYN && (item.qtyIssued > 0)) {
+        if (item.serials.length != item.qtyIssued) {
           isValidForPosting = false;
           validationMessage +=
               'Serial numbers required for ${item.itemCode} - ${item.itemName}. Expected: ${item.qtyOrdered}, Provided: ${item.serials.length}\n';
@@ -185,38 +159,38 @@ class OrderProvider with ChangeNotifier {
 
       // Post header
       final headerQuery = '''
-    INSERT INTO DNoteHeader (
-      Cmpycode, DnNumber, LocCode, Dates, CustomerCode, SalesmanCode, 
-      SoNumber, RefNo, Status, InvStat, Discount, CurCode, ExRate, 
-      DnType, Qty, DTime, LoginUser, CreditLimitAmount, OutstandingBalance, 
-      GrossAmount, Narration, CommissionYN, Supplier, DYType
-    ) VALUES (
-      '${deliveryNoteHeader.cmpyCode}', 
-      '${deliveryNoteHeader.dnNumber}', 
-      '${deliveryNoteHeader.locCode}', 
-      '${deliveryNoteHeader.dates.toIso8601String()}', 
-      '${deliveryNoteHeader.customerCode}', 
-      '${deliveryNoteHeader.salesmanCode}',
-      '${deliveryNoteHeader.soNumber}', 
-      '${deliveryNoteHeader.refNo}', 
-      '${deliveryNoteHeader.status}', 
-      '${deliveryNoteHeader.invStat}', 
-      ${deliveryNoteHeader.discount}, 
-      '${deliveryNoteHeader.curCode}', 
-      ${deliveryNoteHeader.exRate},
-      '${deliveryNoteHeader.dnType}', 
-      ${deliveryNoteHeader.qty}, 
-      '${deliveryNoteHeader.dTime.hour}:${deliveryNoteHeader.dTime.minute}', 
-      '${deliveryNoteHeader.loginUser}', 
-      ${deliveryNoteHeader.creditLimitAmount}, 
-      ${deliveryNoteHeader.outstandingBalance},
-      ${deliveryNoteHeader.grossAmount}, 
-      '${deliveryNoteHeader.narration}', 
-      '${deliveryNoteHeader.commissionYN}', 
-      '${deliveryNoteHeader.supplier}', 
-      '${deliveryNoteHeader.dyType}'
-    )
-    ''';
+INSERT INTO DNoteHeader (
+  Cmpycode, DnNumber, LocCode, Dates, CustomerCode, SalesmanCode, 
+  SoNumber, RefNo, Status, InvStat, Discount, CurCode, ExRate, 
+  DnType, Qty, DTime, LoginUser, CreditLimitAmount, OutstandingBalance, 
+  GrossAmount, Narration, CommissionYN, Supplier, DYType
+) VALUES (
+  '${deliveryNoteHeader.cmpyCode}', 
+  '${deliveryNoteHeader.dnNumber}', 
+  '${deliveryNoteHeader.locCode}', 
+  CONVERT(DATETIME, '${DateFormat('yyyy-MM-dd').format(deliveryNoteHeader.dates)}', 120), 
+  '${deliveryNoteHeader.customerCode}', 
+  '${deliveryNoteHeader.salesmanCode}',
+  '${deliveryNoteHeader.soNumber}', 
+  '${deliveryNoteHeader.refNo}', 
+  '${deliveryNoteHeader.status}', 
+  '${deliveryNoteHeader.invStat}', 
+  ${deliveryNoteHeader.discount}, 
+  '${deliveryNoteHeader.curCode}', 
+  ${deliveryNoteHeader.exRate},
+  '${deliveryNoteHeader.dnType}', 
+  ${deliveryNoteHeader.qty}, 
+  CONVERT(TIME, '${deliveryNoteHeader.dTime.hour.toString().padLeft(2, '0')}:${deliveryNoteHeader.dTime.minute.toString().padLeft(2, '0')}:00'), 
+  '${deliveryNoteHeader.loginUser}', 
+  ${deliveryNoteHeader.creditLimitAmount}, 
+  ${deliveryNoteHeader.outstandingBalance},
+  ${deliveryNoteHeader.grossAmount}, 
+  '${deliveryNoteHeader.narration}', 
+  '${deliveryNoteHeader.commissionYN}', 
+  '${deliveryNoteHeader.supplier}', 
+  '${deliveryNoteHeader.dyType}'
+)
+''';
 
       print('Posting delivery note header...');
       await _sqlConnection.writeData(headerQuery);
@@ -323,7 +297,7 @@ class OrderProvider with ChangeNotifier {
             );
 
             final serialQuery = '''
-          INSERT INTO InvDetailSerialNo (
+          INSERT INTO InvDetailSerials_DN (
             CmpyCode, InvNumber, Sno, ItemCode, SerialNo, SrNo, DnNumber, ReturnYN
           ) VALUES (
             '${serialDetail.cmpyCode}', 
@@ -352,6 +326,108 @@ class OrderProvider with ChangeNotifier {
           message: "Failed to post delivery note: ${e.toString()}");
     }
   }
+
+  // Scanner instance
+  FlutterDataWedge? dataWedge;
+  StreamSubscription? _scanSubscription;
+  String _errorMessage = '';
+  bool _isScannerActive = false;
+  bool _scanCooldown = false;
+  int _scanCount = 0;
+  // Getters
+  bool get isScannerActive => _isScannerActive;
+  int get scanCount => _scanCount;
+
+  void setLoading(bool value) {
+    _isLoading = value;
+    notifyListeners();
+  }
+
+  Future<void> initializeScanner() async {
+    try {
+      setLoading(true);
+
+      if (dataWedge == null) {
+        dataWedge = FlutterDataWedge();
+        await dataWedge!.initialize();
+        await dataWedge!.createDefaultProfile(profileName: "DefaultProfile");
+        debugPrint("Scanner initialized");
+      }
+
+      setLoading(false);
+    } catch (e) {
+      setLoading(false);
+      debugPrint("Failed to initialize scanner: $e");
+      // setErrorMessage("Scanner initialization failed. Please try again.");
+      rethrow;
+    }
+  }
+
+  // Add these to your OrderProvider
+  String? _scannedBarcode;
+  String? get scannedBarcode => _scannedBarcode;
+
+  void clearScannedBarcode() {
+    _scannedBarcode = null;
+    notifyListeners();
+  }
+
+
+  Future<void> startScanning() async {
+    try {
+      notifyListeners();
+
+      if (dataWedge == null) {
+        await initializeScanner();
+      }
+
+      await dataWedge?.activateScanner(true);
+      _scanSubscription?.cancel();
+
+      _scanSubscription = dataWedge!.onScanResult.listen((result) async {
+        if (_scanCooldown) return;
+
+        final barcode = result.data.trim();
+        if (barcode.isEmpty) return;
+
+        _scanCount++;
+        _scannedBarcode = barcode; // Store the scanned barcode
+        notifyListeners();
+        debugPrint('Scanned barcode: $barcode');
+
+        // Add cooldown to prevent multiple scans
+        _scanCooldown = true;
+        Future.delayed(const Duration(milliseconds: 500), () {
+          _scanCooldown = false;
+        });
+      });
+
+      notifyListeners();
+      debugPrint('Scanner started');
+    } catch (e) {
+      debugPrint('Error starting scanner: $e');
+      await stopScanner();
+      rethrow;
+    }
+  }
+
+
+
+
+  Future<void> stopScanner() async {
+    try {
+      await dataWedge?.activateScanner(false);
+      _scanSubscription?.cancel();
+      _isScannerActive = false;
+      debugPrint('Scanner stopped');
+    } catch (e) {
+      debugPrint("Failed to stop scanner: $e");
+      rethrow;
+    } finally {
+      notifyListeners();
+    }
+  }
+
 
   SalesOrder? getSalesOrderById(String soNumber) {
     try {
@@ -405,12 +481,12 @@ class OrderProvider with ChangeNotifier {
         orElse: () => throw Exception('Item not found'),
       );
 
+
       // Check if serial exists in other items or database
       final isUnique =
           await isSerialUnique(itemCode: itemCode, serialNo: serialNo);
       if (!isUnique) {
-        throw Exception(
-            'Serial number $serialNo already exists in another item');
+       return AppAlerts.appToast(message: 'Serial number $serialNo already exists in another item');
       }
 
       // if (item.hasSerial(serialNo)) {
@@ -420,16 +496,17 @@ class OrderProvider with ChangeNotifier {
       // Stock validation for non-inventory items
       if (!item.nonInventory) {
         if (item.stockQty <= 0) {
-          throw Exception('Insufficient stock for item ${item.itemCode}');
+
+          return AppAlerts.appToast(message: 'Insufficient stock for item ${item.itemCode}');
         }
 
         // Check if adding this serial would exceed available stock
         if (item.serials.length >= item.stockQty) {
-          throw Exception(
+          return AppAlerts.appToast(message:
               'Cannot add serial - would exceed available stock (${item.stockQty})');
         }
       }
-
+      item.qtyIssued++;
       item.addSerial(serialNo);
       notifyListeners();
     } catch (e) {
@@ -447,11 +524,18 @@ class OrderProvider with ChangeNotifier {
       if (order == null) throw Exception('Order not found');
 
       final item = order.items.firstWhere(
-        (i) => i.itemCode == itemCode,
+            (i) => i.itemCode == itemCode,
         orElse: () => throw Exception('Item not found'),
       );
 
+      final initialLength = item.serials.length;
       item.serials.removeWhere((s) => s.serialNo == serialNo);
+
+      // Only decrement if a serial was actually removed
+      if (item.serials.length < initialLength) {
+        item.qtyIssued -= 1;
+      }
+
       // Recalculate positions
       for (int i = 0; i < item.serials.length; i++) {
         item.serials[i] = ItemSerial(
@@ -464,6 +548,7 @@ class OrderProvider with ChangeNotifier {
       throw Exception('Failed to remove serial: ${e.toString()}');
     }
   }
+
 
   void resetValidation() {
     isValidForPosting = true;

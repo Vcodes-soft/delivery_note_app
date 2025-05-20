@@ -144,6 +144,20 @@ class _AuthScreenState extends State<AuthScreen> {
     }
 
     return Scaffold(
+      appBar: AppBar(
+        title: const Text('Login'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.settings),
+            onPressed: () {
+              // Handle server configuration
+              Provider.of<AuthProvider>(context,listen: false).removeSavedConfig();
+              Navigator.of(context).pushNamed('/');
+            },
+            tooltip: 'Server Configuration',
+          ),
+        ],
+      ),
       body: Center(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(24.0),
