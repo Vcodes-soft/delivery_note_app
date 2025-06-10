@@ -54,25 +54,25 @@ class OrderCard extends StatelessWidget {
                       ),
                     ),
                   ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: status == 'PENDING'
-                          ? Colors.orange.withOpacity(0.2)
-                          : Colors.green.withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      status,
-                      style: TextStyle(
-                        color: status == 'PENDING' ? Colors.orange : Colors.green,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
+                  // Container(
+                  //   padding: const EdgeInsets.symmetric(
+                  //     horizontal: 8,
+                  //     vertical: 4,
+                  //   ),
+                  //   decoration: BoxDecoration(
+                  //     color: status == 'PENDING'
+                  //         ? Colors.orange.withOpacity(0.2)
+                  //         : Colors.green.withOpacity(0.2),
+                  //     borderRadius: BorderRadius.circular(12),
+                  //   ),
+                  //   child: Text(
+                  //     status,
+                  //     style: TextStyle(
+                  //       color: status == 'PENDING' ? Colors.orange : Colors.green,
+                  //       fontWeight: FontWeight.bold,
+                  //     ),
+                  //   ),
+                  // ),
                 ],
               ),
               const SizedBox(height: 8),
