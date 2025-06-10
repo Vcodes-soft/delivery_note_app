@@ -1,10 +1,11 @@
+// item_card.dart
+import 'package:delivery_note_app/models/purchase_order_model.dart';
 import 'package:delivery_note_app/models/sales_order_model.dart';
 import 'package:delivery_note_app/utils/app_alerts.dart';
 import 'package:flutter/material.dart';
-import 'package:delivery_note_app/models/item_model.dart'; // Assuming this exports SalesOrderItem
 
 class ItemCard extends StatefulWidget {
-  final SalesOrderItem item;
+  final dynamic item;
   final String soNumber;
   final VoidCallback? onAddLotPressed;
   final Function(double)? onQuantityChanged;
@@ -24,6 +25,15 @@ class ItemCard extends StatefulWidget {
 class _ItemCardState extends State<ItemCard> {
   @override
   Widget build(BuildContext context) {
+    bool isSalesOrderItem = widget.item is SalesOrderItem;
+    double stockQty = isSalesOrderItem
+        ? (widget.item as SalesOrderItem).stockQty
+        : (widget.item as PurchaseOrderItem).qtyOrdered;
+    double qtyOrdered = widget.item.qtyOrdered;
+    double qtyIssued = isSalesOrderItem
+        ? (widget.item as SalesOrderItem).qtyIssued
+        : (widget.item as PurchaseOrderItem).qtyReceived;
+
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       child: Padding(
@@ -43,7 +53,7 @@ class _ItemCardState extends State<ItemCard> {
                   ),
                 ),
                 Text(
-                  'Stock: ${widget.item.stockQty}',
+                  isSalesOrderItem ? 'Stock: $stockQty' : 'Ordered: $stockQty',
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
               ],
@@ -75,11 +85,15 @@ class _ItemCardState extends State<ItemCard> {
                     IconButton(
                       icon: const Icon(Icons.remove),
                       onPressed: () {
-                        if (widget.item.qtyIssued > 0) {
+                        if (qtyIssued > 0) {
                           setState(() {
-                            widget.item.qtyIssued--;
+                            if (isSalesOrderItem) {
+                              (widget.item as SalesOrderItem).qtyIssued--;
+                            } else {
+                              (widget.item as PurchaseOrderItem).qtyReceived--;
+                            }
                           });
-                          widget.onQuantityChanged?.call(widget.item.qtyIssued);
+                          widget.onQuantityChanged?.call(qtyIssued - 1);
                         }
                       },
                       padding: EdgeInsets.zero,
@@ -88,22 +102,26 @@ class _ItemCardState extends State<ItemCard> {
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 8),
                       child: Text(
-                        '${widget.item.qtyIssued}',
+                        '$qtyIssued',
                         style: Theme.of(context).textTheme.bodyLarge,
                       ),
                     ),
                     IconButton(
                       icon: const Icon(Icons.add),
                       onPressed: () {
-                        if (widget.item.qtyIssued >= widget.item.qtyOrdered) {
-                          AppAlerts.appToast(message: 'Cannot exceed ordered quantity (${widget.item.qtyOrdered})');
-                        } else if (widget.item.qtyIssued >= widget.item.stockQty) {
-                          AppAlerts.appToast(message: 'Insufficient stock (${widget.item.stockQty} available)');
+                        if (qtyIssued >= qtyOrdered) {
+                          AppAlerts.appToast(message: 'Cannot exceed ordered quantity ($qtyOrdered)');
+                        } else if (isSalesOrderItem && qtyIssued >= stockQty) {
+                          AppAlerts.appToast(message: 'Insufficient stock ($stockQty available)');
                         } else {
                           setState(() {
-                            widget.item.qtyIssued++;
+                            if (isSalesOrderItem) {
+                              (widget.item as SalesOrderItem).qtyIssued++;
+                            } else {
+                              (widget.item as PurchaseOrderItem).qtyReceived++;
+                            }
                           });
-                          widget.onQuantityChanged?.call(widget.item.qtyIssued);
+                          widget.onQuantityChanged?.call(qtyIssued + 1);
                         }
                       },
                       padding: EdgeInsets.zero,
