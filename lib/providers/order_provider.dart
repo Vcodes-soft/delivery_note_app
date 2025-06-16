@@ -60,6 +60,7 @@ class OrderProvider with ChangeNotifier {
       notifyListeners();
     }
   }
+
   Future<List<SalesOrder>> getSalesOrdersByLocation(String locationCode) async {
     try {
       final result = await _sqlConnection.getData("""
@@ -108,7 +109,7 @@ class OrderProvider with ChangeNotifier {
       if (item.qtyIssued > item.qtyOrdered) {
         isValidForPosting = false;
         validationMessage +=
-        'Quantity issued cannot exceed quantity ordered for ${item.itemCode} - ${item.itemName}. Issued: ${item.qtyIssued}, Ordered: ${item.qtyOrdered}\n';
+            'Quantity issued cannot exceed quantity ordered for ${item.itemCode} - ${item.itemName}. Issued: ${item.qtyIssued}, Ordered: ${item.qtyOrdered}\n';
       }
 
       // Check serial numbers for serialized items
@@ -127,39 +128,52 @@ class OrderProvider with ChangeNotifier {
       AppAlerts.appToast(
           message:
               "Delivery note validation failed, please check the log in above");
-      // You could also show a more detailed dialog here
       return;
     }
 
-    String deliveryNoteNumber = "DN00001";
-
     try {
+      // Get the next available delivery note number
+      final maxDnQuery =
+          "SELECT MAX(DnNumber) as maxDn FROM DNoteHeader WHERE CmpyCode = '$companyCode'";
+      final maxDnResult = await _sqlConnection.getData(maxDnQuery);
+      String nextDnNumber = "DN00001"; // Default starting number
+
+      if (maxDnResult.isNotEmpty) {
+        // Parse the string result to get the max DN number
+        final maxDn = maxDnResult;
+        if (maxDn.isNotEmpty && maxDn != "null") {
+          // Extract the numeric part and increment
+          final numericPart = int.tryParse(maxDn.substring(2)) ?? 0;
+          nextDnNumber = "DN${(numericPart + 1).toString().padLeft(5, '0')}";
+        }
+      }
+
       // 1. Create DeliveryNoteHeader
       final deliveryNoteHeader = DeliveryNoteHeader(
         cmpyCode: order.companyCode,
-        dnNumber: deliveryNoteNumber, // Temporary number
+        dnNumber: nextDnNumber,
         locCode: order.locationCode,
         dates: DateTime.now(),
         customerCode: order.customerCode,
         salesmanCode: order.salesmanCode,
         soNumber: order.soNumber,
-        refNo: order.refNo, // will later entered manually
-        status: 'O', // Open status
-        invStat: 'N', // Not invoiced
-        discount: 0, // from SO
-        curCode: 'AED', // from SO
-        exRate: 1, // from SO
-        dnType: 'D', // Delivery type
-        qty: order.items.length, // from SO
-        dTime: TimeOfDay.now(), // time of day
+        refNo: order.refNo,
+        status: 'O',
+        invStat: 'N',
+        discount: 0,
+        curCode: 'AED',
+        exRate: 1,
+        dnType: 'D',
+        qty: order.items.length,
+        dTime: TimeOfDay.now(),
         loginUser: username,
-        creditLimitAmount: 0, // auto
-        outstandingBalance: 0, // auto
-        grossAmount: 0, // auto calculated maybe from frontend
-        narration: '', // manually add later
-        commissionYN: 'N', // from SO
-        supplier: '', // from SO
-        dyType: 'D', // Default D
+        creditLimitAmount: 0,
+        outstandingBalance: 0,
+        grossAmount: 0,
+        narration: '',
+        commissionYN: 'N',
+        supplier: '',
+        dyType: 'D',
       );
 
       // Post header
@@ -197,10 +211,9 @@ INSERT INTO DNoteHeader (
 )
 ''';
 
-      print('Posting delivery note header...');
+      print('Posting delivery note header with DN: $nextDnNumber...');
       await _sqlConnection.writeData(headerQuery);
-      print(
-          'Header posted successfully with DN: ${deliveryNoteHeader.dnNumber}');
+      print('Header posted successfully with DN: $nextDnNumber');
 
       // 2. Create and post DeliveryNoteDetails for each item
       for (var item in order.items) {
@@ -214,13 +227,13 @@ INSERT INTO DNoteHeader (
           description: item.itemName,
           unit: item.unit,
           qtyOrdered: item.qtyOrdered,
-          qtyIssued: item.qtyIssued, // Now validated to be equal to qtyOrdered
-          unitPrice: 0, // Replace with actual price
-          grossTotal: 0, // Replace with actual calculation
+          qtyIssued: item.qtyIssued,
+          unitPrice: 0,
+          grossTotal: 0,
           discountP: 0,
           discount: 0,
-          closingStock: item.stockQty - item.qtyIssued, // Update closing stock
-          avgCost: 0, // Replace with actual cost
+          closingStock: item.stockQty - item.qtyIssued,
+          avgCost: 0,
           srNo: item.serials.isNotEmpty ? item.serials.first.serialNo : null,
           soNumber: order.soNumber,
           cogsamt: 0,
@@ -292,7 +305,7 @@ INSERT INTO DNoteHeader (
           for (var serial in item.serials) {
             final serialDetail = InventoryDetailSerialNo(
               cmpyCode: order.companyCode,
-              invNumber: '', // Will be invoice number if available
+              invNumber: '',
               sno: serial.sNo.toString(),
               itemCode: item.itemCode,
               serialNo: serial.serialNo,
@@ -322,7 +335,8 @@ INSERT INTO DNoteHeader (
           }
         }
       }
-      AppAlerts.appToast(message: "Delivery note posted successfully");
+      AppAlerts.appToast(
+          message: "Delivery note $nextDnNumber posted successfully");
     } catch (e, stackTrace) {
       print('ERROR in postDeliveryNote:');
       print('Message: $e');
@@ -377,7 +391,6 @@ INSERT INTO DNoteHeader (
     notifyListeners();
   }
 
-
   Future<void> startScanning() async {
     try {
       notifyListeners();
@@ -416,9 +429,6 @@ INSERT INTO DNoteHeader (
     }
   }
 
-
-
-
   Future<void> stopScanner() async {
     try {
       await dataWedge?.activateScanner(false);
@@ -432,7 +442,6 @@ INSERT INTO DNoteHeader (
       notifyListeners();
     }
   }
-
 
   SalesOrder? getSalesOrderById(String soNumber) {
     try {
@@ -486,12 +495,12 @@ INSERT INTO DNoteHeader (
         orElse: () => throw Exception('Item not found'),
       );
 
-
       // Check if serial exists in other items or database
       final isUnique =
           await isSerialUnique(itemCode: itemCode, serialNo: serialNo);
       if (!isUnique) {
-       return AppAlerts.appToast(message: 'Serial number $serialNo already exists in another item');
+        return AppAlerts.appToast(
+            message: 'Serial number $serialNo already exists in another item');
       }
 
       // if (item.hasSerial(serialNo)) {
@@ -501,14 +510,15 @@ INSERT INTO DNoteHeader (
       // Stock validation for non-inventory items
       if (!item.nonInventory) {
         if (item.stockQty <= 0) {
-
-          return AppAlerts.appToast(message: 'Insufficient stock for item ${item.itemCode}');
+          return AppAlerts.appToast(
+              message: 'Insufficient stock for item ${item.itemCode}');
         }
 
         // Check if adding this serial would exceed available stock
         if (item.serials.length >= item.stockQty) {
-          return AppAlerts.appToast(message:
-              'Cannot add serial - would exceed available stock (${item.stockQty})');
+          return AppAlerts.appToast(
+              message:
+                  'Cannot add serial - would exceed available stock (${item.stockQty})');
         }
       }
       item.qtyIssued++;
@@ -529,7 +539,7 @@ INSERT INTO DNoteHeader (
       if (order == null) throw Exception('Order not found');
 
       final item = order.items.firstWhere(
-            (i) => i.itemCode == itemCode,
+        (i) => i.itemCode == itemCode,
         orElse: () => throw Exception('Item not found'),
       );
 
@@ -553,7 +563,6 @@ INSERT INTO DNoteHeader (
       throw Exception('Failed to remove serial: ${e.toString()}');
     }
   }
-
 
   void resetValidation() {
     isValidForPosting = true;

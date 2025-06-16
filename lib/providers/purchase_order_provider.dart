@@ -1,6 +1,7 @@
 // purchase_order_provider.dart
 import 'dart:convert';
 import 'package:delivery_note_app/models/sales_order_model.dart';
+import 'package:delivery_note_app/utils/app_alerts.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:mssql_connection/mssql_connection.dart';
@@ -85,6 +86,7 @@ class PurchaseOrderProvider with ChangeNotifier {
 
     if (order == null) {
       print('Order not found for PO: $poNumber');
+      AppAlerts.appToast(message: "Order not found for PO: $poNumber");
       return;
     }
 
@@ -110,16 +112,31 @@ class PurchaseOrderProvider with ChangeNotifier {
     // If validation fails, show error message and return
     if (!isValidForPosting) {
       notifyListeners();
+      AppAlerts.appToast(
+          message: "GRN validation failed, please check the log above");
       return;
     }
 
-    String grnNumber = "GRN00001"; // This should be generated properly
-
     try {
+      // Get the next available GRN number
+      final maxGrnQuery = "SELECT MAX(GrnNumber) as maxGrn FROM GrnHeader WHERE CmpyCode = '$companyCode'";
+      final maxGrnResult = await _sqlConnection.getData(maxGrnQuery);
+      String nextGrnNumber = "GRN00001"; // Default starting number
+
+      if (maxGrnResult.isNotEmpty) {
+        // Parse the string result to get the max GRN number
+        final maxGrn = maxGrnResult;
+        if (maxGrn.isNotEmpty && maxGrn != "null") {
+          // Extract the numeric part and increment
+          final numericPart = int.tryParse(maxGrn.substring(3)) ?? 0;
+          nextGrnNumber = "GRN${(numericPart + 1).toString().padLeft(5, '0')}";
+        }
+      }
+
       // 1. Create GRNHeader
       final grnHeader = {
         'CmpyCode': companyCode,
-        'GrnNumber': grnNumber,
+        'GrnNumber': nextGrnNumber,
         'LocCode': order.locationCode,
         'Dates': DateFormat('yyyy-MM-dd').format(DateTime.now()),
         'SupplierCode': order.supplierCode,
@@ -131,7 +148,7 @@ class PurchaseOrderProvider with ChangeNotifier {
         'Discount': 0,
         'GrnType': 'G', // Goods receipt type
         'Qty': order.items.length,
-        'DTime': '${TimeOfDay.now().hour}:${TimeOfDay.now().minute}:00',
+        'DTime': '${TimeOfDay.now().hour.toString().padLeft(2, '0')}:${TimeOfDay.now().minute.toString().padLeft(2, '0')}:00',
         'LoginUser': username,
         'MType': 'P', // Purchase type
         'GrnType1': 'P' // Purchase type
@@ -164,15 +181,15 @@ class PurchaseOrderProvider with ChangeNotifier {
       )
       ''';
 
-      print('Posting GRN header...');
+      print('Posting GRN header with number: $nextGrnNumber...');
       await _sqlConnection.writeData(headerQuery);
-      print('Header posted successfully with GRN: ${grnHeader['GrnNumber']}');
+      print('Header posted successfully with GRN: $nextGrnNumber');
 
       // 2. Create and post GRNDetails for each item
       for (var item in order.items) {
         final detail = {
           'CmpyCode': companyCode,
-          'GrnNumber': grnNumber,
+          'GrnNumber': nextGrnNumber,
           'LocCode': order.locationCode,
           'Sno': order.items.indexOf(item) + 1,
           'ItemCode': item.itemCode,
@@ -244,7 +261,7 @@ class PurchaseOrderProvider with ChangeNotifier {
           for (var serial in item.serials) {
             final serialDetail = {
               'CmpyCode': companyCode,
-              'GrnNumber': grnNumber,
+              'GrnNumber': nextGrnNumber,
               'VbNumber': '', // Will be invoice number if available
               'Sno': serial.sNo.toString(),
               'ItemCode': item.itemCode,
@@ -266,7 +283,7 @@ class PurchaseOrderProvider with ChangeNotifier {
               '${serialDetail['SerialNo']}', 
               '${serialDetail['SrNo']}', 
               '${serialDetail['DocType']}', 
-              ${serialDetail['ReturnYN'] != null ? 1 : 0}
+              ${serialDetail['ReturnYN'] == true ? 1 : 0}
             )
             ''';
 
@@ -276,12 +293,16 @@ class PurchaseOrderProvider with ChangeNotifier {
           }
         }
       }
+      AppAlerts.appToast(message: "GRN $nextGrnNumber posted successfully");
     } catch (e, stackTrace) {
       print('ERROR in postGoodsReceipt:');
       print('Message: $e');
       print('Stack trace: $stackTrace');
+      AppAlerts.appToast(
+          message: "Failed to post GRN: ${e.toString()}");
     }
   }
+
 
   PurchaseOrder? getPurchaseOrderById(String poNumber) {
     try {
