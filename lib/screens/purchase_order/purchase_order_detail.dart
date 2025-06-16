@@ -114,7 +114,7 @@ class _PurchaseOrderDetailScreenState extends State<PurchaseOrderDetailScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text('PO #${order.poNumber}'),
+        title: Text(order.poNumber),
         actions: [
           Consumer<PurchaseOrderProvider>(
             builder: (context, provider, _) {
@@ -176,7 +176,7 @@ class _PurchaseOrderDetailScreenState extends State<PurchaseOrderDetailScreen> {
                   padding:
                   const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
                 ),
-                child: const Text('Post Goods Receipt',
+                child: const Text('Post GRN',
                     style: TextStyle(fontSize: 18)),
               ),
             ),

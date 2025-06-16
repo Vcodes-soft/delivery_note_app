@@ -48,7 +48,7 @@ class PurchaseOrderItem {
   final String itemName;
   final String unit;
   final double qtyOrdered;
-  late final double qtyReceived;
+  double qtyReceived;
   final bool nonInventory;
   final bool serialYN;
   final List<ItemSerial> serials;
@@ -72,6 +72,7 @@ class PurchaseOrderItem {
       qtyOrdered: double.parse(json['QtyOrdered'].toString()),
       nonInventory: json['NonInventory'] == 1,
       serialYN: json['SerialYN'] == 1,
+      qtyReceived: 0
     );
   }
 

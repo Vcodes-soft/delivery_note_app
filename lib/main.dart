@@ -6,6 +6,8 @@ import 'package:delivery_note_app/routes.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import 'providers/purchase_order_provider.dart';
+
 void main() async{
   await WidgetsFlutterBinding.ensureInitialized();
   final mssqlHelper = MSSQLHelper();
@@ -15,6 +17,7 @@ void main() async{
         ChangeNotifierProvider(create: (_) => ThemeProvider()),
         ChangeNotifierProvider(create: (_) => AuthProvider()),
         ChangeNotifierProvider(create: (_) => OrderProvider()),
+        ChangeNotifierProvider(create: (_) => PurchaseOrderProvider()),
       ],
       child: const MyApp(),
     ),

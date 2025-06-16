@@ -26,7 +26,7 @@ class OrderCard extends StatelessWidget {
       issueDate = (order as SalesOrder).soDate;
     } else if (order is PurchaseOrder) {
       title = (order as PurchaseOrder).supplierName;
-      subtitle = '${order.id}';
+      subtitle = (order as PurchaseOrder).poNumber;
       status = (order as PurchaseOrder).isPending ? 'PENDING' : 'COMPLETED';
       issueDate = (order as PurchaseOrder).poDate;
     } else {

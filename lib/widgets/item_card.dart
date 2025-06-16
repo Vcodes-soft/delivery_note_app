@@ -53,7 +53,8 @@ class _ItemCardState extends State<ItemCard> {
                   ),
                 ),
                 Text(
-                  isSalesOrderItem ? 'Stock: $stockQty' : 'Ordered: $stockQty',
+                  // isSalesOrderItem ? 'Stock: $stockQty' : 'Ordered: $stockQty',
+                  'Stock: $stockQty',
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
               ],
