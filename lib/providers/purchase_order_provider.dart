@@ -135,7 +135,7 @@ class PurchaseOrderProvider with ChangeNotifier {
         'CurCode': 'AED',
         'ExRate': 1,
         'Discount': 0,
-        'GrnType': 'G', // Goods receipt type
+        'GrnType': 'P', // Goods receipt type
         'Qty': order.items.fold(0.0, (double sum, item) => sum + item.qtyReceived),
         'DTime': '${TimeOfDay.now().hour.toString().padLeft(2, '0')}:${TimeOfDay.now().minute.toString().padLeft(2, '0')}:00',
         'LoginUser': username,
