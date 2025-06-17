@@ -2,6 +2,7 @@
 import 'dart:convert';
 import 'package:delivery_note_app/models/sales_order_model.dart';
 import 'package:delivery_note_app/utils/app_alerts.dart';
+import 'package:delivery_note_app/utils/extensions.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:mssql_connection/mssql_connection.dart';
@@ -118,22 +119,10 @@ class PurchaseOrderProvider with ChangeNotifier {
     }
 
     try {
-      // Get the next available GRN number
-      final maxGrnQuery = "SELECT MAX(GrnNumber) as maxGrn FROM GrnHeader WHERE CmpyCode = '$companyCode'";
-      final maxGrnResult = await _sqlConnection.getData(maxGrnQuery);
-      String nextGrnNumber = "GRN00001"; // Default starting number
+      // 1. Get the next GRN number and increment it if necessary
+      String nextGrnNumber = await getNextGrnNumber();
 
-      if (maxGrnResult.isNotEmpty) {
-        // Parse the string result to get the max GRN number
-        final maxGrn = maxGrnResult;
-        if (maxGrn.isNotEmpty && maxGrn != "null") {
-          // Extract the numeric part and increment
-          final numericPart = int.tryParse(maxGrn.substring(3)) ?? 0;
-          nextGrnNumber = "GRN${(numericPart + 1).toString().padLeft(5, '0')}";
-        }
-      }
-
-      // 1. Create GRNHeader
+      // 2. Create GRNHeader
       final grnHeader = {
         'CmpyCode': companyCode,
         'GrnNumber': nextGrnNumber,
@@ -147,51 +136,52 @@ class PurchaseOrderProvider with ChangeNotifier {
         'ExRate': 1,
         'Discount': 0,
         'GrnType': 'G', // Goods receipt type
-        'Qty': order.items.length,
+        'Qty': order.items.fold(0.0, (double sum, item) => sum + item.qtyReceived),
         'DTime': '${TimeOfDay.now().hour.toString().padLeft(2, '0')}:${TimeOfDay.now().minute.toString().padLeft(2, '0')}:00',
         'LoginUser': username,
         'MType': 'P', // Purchase type
-        'GrnType1': 'P' // Purchase type
+        'GrnType1': null
       };
 
       // Post header
       final headerQuery = '''
-      INSERT INTO GrnHeader (
-        CmpyCode, GrnNumber, LocCode, Dates, SupplierCode, RefNo, InvStat, 
-        Status, CurCode, ExRate, Discount, GrnType, Qty, DTime, LoginUser, 
-        MType, GrnType1
-      ) VALUES (
-        '${grnHeader['CmpyCode']}', 
-        '${grnHeader['GrnNumber']}', 
-        '${grnHeader['LocCode']}', 
-        CONVERT(DATETIME, '${grnHeader['Dates']}', 120), 
-        '${grnHeader['SupplierCode']}', 
-        '${grnHeader['RefNo']}', 
-        '${grnHeader['InvStat']}', 
-        '${grnHeader['Status']}', 
-        '${grnHeader['CurCode']}', 
-        ${grnHeader['ExRate']}, 
-        ${grnHeader['Discount']}, 
-        '${grnHeader['GrnType']}', 
-        ${grnHeader['Qty']}, 
-        '${grnHeader['DTime']}', 
-        '${grnHeader['LoginUser']}', 
-        '${grnHeader['MType']}', 
-        '${grnHeader['GrnType1']}'
-      )
-      ''';
+    INSERT INTO GrnHeader (
+      CmpyCode, GrnNumber, LocCode, Dates, SupplierCode, RefNo, InvStat, 
+      Status, CurCode, ExRate, Discount, GrnType, Qty, DTime, LoginUser, 
+      MType, GrnType1
+    ) VALUES (
+      '${grnHeader['CmpyCode']}', 
+      '${grnHeader['GrnNumber']}', 
+      '${grnHeader['LocCode']}', 
+      CONVERT(DATETIME, '${grnHeader['Dates']}', 120), 
+      '${grnHeader['SupplierCode']}', 
+      '${grnHeader['RefNo']}', 
+      '${grnHeader['InvStat']}', 
+      '${grnHeader['Status']}', 
+      '${grnHeader['CurCode']}', 
+      ${grnHeader['ExRate']}, 
+      ${grnHeader['Discount']}, 
+      '${grnHeader['GrnType']}', 
+      ${grnHeader['Qty']}, 
+      '${grnHeader['DTime']}', 
+      '${grnHeader['LoginUser']}', 
+      '${grnHeader['MType']}', 
+      '${grnHeader['GrnType1']}'
+    )
+    ''';
 
       print('Posting GRN header with number: $nextGrnNumber...');
       await _sqlConnection.writeData(headerQuery);
       print('Header posted successfully with GRN: $nextGrnNumber');
 
-      // 2. Create and post GRNDetails for each item
+      // 3. Create and post GRNDetails for each item
       for (var item in order.items) {
+        final bsno = order.items.indexOf(item) + 1;
         final detail = {
           'CmpyCode': companyCode,
           'GrnNumber': nextGrnNumber,
           'LocCode': order.locationCode,
-          'Sno': order.items.indexOf(item) + 1,
+          'Sno': bsno, // bsno is same as sno
           'ItemCode': item.itemCode,
           'Barcode': null,
           'Description': item.itemName,
@@ -199,64 +189,64 @@ class PurchaseOrderProvider with ChangeNotifier {
           'QtyOrdered': item.qtyOrdered,
           'QtyReceived': item.qtyReceived,
           'QtyFree': 0,
-          'UnitPrice': 0,
-          'GrossTotal': 0,
+          'UnitPrice': item.unitPrice.precised(),
+          'GrossTotal': ((item.unitPrice).precised() * (item.qtyReceived).precised()).precised(),
           'AvgCost': 0,
           'ProjectCode': null,
           'AnalysisCode': null,
-          'SrNo': item.serials.isNotEmpty ? item.serials.first.serialNo : null,
+          'SrNo': bsno,
           'PoNumber': order.poNumber,
           'DiscountP': 0,
           'Discount': 0,
           'NetAmount': 0,
           'NetPurchase': 0,
-          'Bsno': null,
+          'Bsno': bsno,
           'TaxCode': null,
           'TaxPercentage': 0,
           'BinCode': null
         };
 
         final detailQuery = '''
-        INSERT INTO GrnDetail (
-          CmpyCode, GrnNumber, LocCode, Sno, ItemCode, Barcode, Description, 
-          Unit, QtyOrdered, QtyReceived, QtyFree, UnitPrice, GrossTotal, 
-          AvgCost, ProjectCode, AnalysisCode, SrNo, PoNumber, DiscountP, 
-          Discount, NetAmount, NetPurchase, Bsno, TaxCode, TaxPercentage, BinCode
-        ) VALUES (
-          '${detail['CmpyCode']}', 
-          '${detail['GrnNumber']}', 
-          '${detail['LocCode']}', 
-          ${detail['Sno']}, 
-          '${detail['ItemCode']}', 
-          ${detail['Barcode'] != null ? "'${detail['Barcode']}'" : 'NULL'}, 
-          '${detail['Description']}',
-          '${detail['Unit']}', 
-          ${detail['QtyOrdered']}, 
-          ${detail['QtyReceived']}, 
-          ${detail['QtyFree']}, 
-          ${detail['UnitPrice']}, 
-          ${detail['GrossTotal']}, 
-          ${detail['AvgCost']}, 
-          ${detail['ProjectCode'] != null ? "'${detail['ProjectCode']}'" : 'NULL'}, 
-          ${detail['AnalysisCode'] != null ? "'${detail['AnalysisCode']}'" : 'NULL'}, 
-          ${detail['SrNo'] != null ? "'${detail['SrNo']}'" : 'NULL'}, 
-          '${detail['PoNumber']}', 
-          ${detail['DiscountP']},
-          ${detail['Discount']}, 
-          ${detail['NetAmount']}, 
-          ${detail['NetPurchase']}, 
-          ${detail['Bsno'] != null ? "'${detail['Bsno']}'" : 'NULL'}, 
-          ${detail['TaxCode'] != null ? "'${detail['TaxCode']}'" : 'NULL'}, 
-          ${detail['TaxPercentage']},
-          ${detail['BinCode'] != null ? "'${detail['BinCode']}'" : 'NULL'}
-        )
-        ''';
+      INSERT INTO GrnDetail (
+        CmpyCode, GrnNumber, LocCode, Sno, ItemCode, Barcode, Description, 
+        Unit, QtyOrdered, QtyReceived, QtyFree, UnitPrice, GrossTotal, 
+        AvgCost, ProjectCode, AnalysisCode, SrNo, PoNumber, DiscountP, 
+        Discount, NetAmount, NetPurchase, Bsno, TaxCode, TaxPercentage, BinCode
+      ) VALUES (
+        '${detail['CmpyCode']}', 
+        '${detail['GrnNumber']}', 
+        '${detail['LocCode']}', 
+        ${detail['Sno']}, 
+        '${detail['ItemCode']}', 
+        ${detail['Barcode'] != null ? "'${detail['Barcode']}'" : 'NULL'}, 
+        '${detail['Description']}',
+        '${detail['Unit']}', 
+        ${detail['QtyOrdered']}, 
+        ${detail['QtyReceived']}, 
+        ${detail['QtyFree']}, 
+        ${detail['UnitPrice']}, 
+        ${detail['GrossTotal']}, 
+        ${detail['AvgCost']}, 
+        ${detail['ProjectCode'] != null ? "'${detail['ProjectCode']}'" : 'NULL'}, 
+        ${detail['AnalysisCode'] != null ? "'${detail['AnalysisCode']}'" : 'NULL'}, 
+        ${detail['SrNo'] != null ? "'${detail['SrNo']}'" : 'NULL'}, 
+        '${detail['PoNumber']}', 
+        ${detail['DiscountP']},
+        ${detail['Discount']}, 
+        ${detail['NetAmount']}, 
+        ${detail['NetPurchase']}, 
+        ${detail['Bsno'] != null ? "'${detail['Bsno']}'" : 'NULL'}, 
+        ${detail['TaxCode'] != null ? "'${detail['TaxCode']}'" : 'NULL'}, 
+        ${detail['TaxPercentage']},
+        ${detail['BinCode'] != null ? "'${detail['BinCode']}'" : 'NULL'}
+      )
+      ''';
 
         print('Posting detail for item ${item.itemCode}...');
         await _sqlConnection.writeData(detailQuery);
         print('Detail posted for item ${item.itemCode}');
 
-        // 3. Post serial numbers if item is serialized
+        // 4. Post serial numbers if item is serialized
         if (item.serialYN && item.serials.isNotEmpty) {
           for (var serial in item.serials) {
             final serialDetail = {
@@ -266,26 +256,26 @@ class PurchaseOrderProvider with ChangeNotifier {
               'Sno': serial.sNo.toString(),
               'ItemCode': item.itemCode,
               'SerialNo': serial.serialNo,
-              'SrNo': "1",
+              'SrNo': bsno.toString(),
               'DocType': 'P', // Purchase type
               'ReturnYN': false,
             };
 
             final serialQuery = '''
-            INSERT INTO GrnDetailSerials (
-              CmpyCode, GrnNumber, VbNumber, Sno, ItemCode, SerialNo, SrNo, DocType, ReturnYN
-            ) VALUES (
-              '${serialDetail['CmpyCode']}', 
-              '${serialDetail['GrnNumber']}', 
-              '${serialDetail['VbNumber']}', 
-              '${serialDetail['Sno']}', 
-              '${serialDetail['ItemCode']}', 
-              '${serialDetail['SerialNo']}', 
-              '${serialDetail['SrNo']}', 
-              '${serialDetail['DocType']}', 
-              ${serialDetail['ReturnYN'] == true ? 1 : 0}
-            )
-            ''';
+          INSERT INTO GrnDetailSerials (
+            CmpyCode, GrnNumber, VbNumber, Sno, ItemCode, SerialNo, SrNo, DocType, ReturnYN
+          ) VALUES (
+            '${serialDetail['CmpyCode']}', 
+            '${serialDetail['GrnNumber']}', 
+            '${serialDetail['VbNumber']}', 
+            '${serialDetail['Sno']}', 
+            '${serialDetail['ItemCode']}', 
+            '${serialDetail['SerialNo']}', 
+            '${serialDetail['SrNo']}', 
+            '${serialDetail['DocType']}', 
+            ${serialDetail['ReturnYN'] == true ? 1 : 0}
+          )
+          ''';
 
             print('Posting serial ${serial.serialNo}...');
             await _sqlConnection.writeData(serialQuery);
@@ -300,6 +290,25 @@ class PurchaseOrderProvider with ChangeNotifier {
       print('Stack trace: $stackTrace');
       AppAlerts.appToast(
           message: "Failed to post GRN: ${e.toString()}");
+    }
+  }
+
+  Future<String> getNextGrnNumber() async {
+    final query = '''
+  SELECT GrnNumber 
+  FROM GrnHeader 
+  WHERE GrnNumber LIKE 'AGRN%'
+  ORDER BY GrnNumber DESC
+  ''';
+    final result = await _sqlConnection.getData(query);
+    final resultJson = jsonDecode(result);
+    if (resultJson.isEmpty) {
+      return 'AGRN00001';
+    } else {
+      final lastGrn = resultJson[0]['GrnNumber'];
+      final lastNumber = int.parse(lastGrn.replaceAll('AGRN', ''));
+      final nextNumber = lastNumber + 1;
+      return 'AGRN${nextNumber.toString().padLeft(5, '0')}';
     }
   }
 

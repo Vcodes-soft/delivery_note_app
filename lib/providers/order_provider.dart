@@ -87,6 +87,7 @@ class OrderProvider with ChangeNotifier {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     final String companyCode = prefs.getString('companyCode') ?? "";
     final String username = prefs.getString("username") ?? "";
+
     if (order == null) {
       print('Order not found for SO: $soNumber');
       AppAlerts.appToast(message: "Order not found for SO: $soNumber");
@@ -101,7 +102,7 @@ class OrderProvider with ChangeNotifier {
         if (item.stockQty < item.qtyIssued) {
           isValidForPosting = false;
           validationMessage +=
-              'Insufficient stock for ${item.itemCode} - ${item.itemName}. Available: ${item.stockQty}, Issued: ${item.qtyIssued}\n';
+          'Insufficient stock for ${item.itemCode} - ${item.itemName}. Available: ${item.stockQty}, Issued: ${item.qtyIssued}\n';
         }
       }
 
@@ -109,7 +110,7 @@ class OrderProvider with ChangeNotifier {
       if (item.qtyIssued > item.qtyOrdered) {
         isValidForPosting = false;
         validationMessage +=
-            'Quantity issued cannot exceed quantity ordered for ${item.itemCode} - ${item.itemName}. Issued: ${item.qtyIssued}, Ordered: ${item.qtyOrdered}\n';
+        'Quantity issued cannot exceed quantity ordered for ${item.itemCode} - ${item.itemName}. Issued: ${item.qtyIssued}, Ordered: ${item.qtyOrdered}\n';
       }
 
       // Check serial numbers for serialized items
@@ -117,7 +118,7 @@ class OrderProvider with ChangeNotifier {
         if (item.serials.length != item.qtyIssued) {
           isValidForPosting = false;
           validationMessage +=
-              'Serial numbers required for ${item.itemCode} - ${item.itemName}. Expected: ${item.qtyOrdered}, Provided: ${item.serials.length}\n';
+          'Serial numbers required for ${item.itemCode} - ${item.itemName}. Expected: ${item.qtyOrdered}, Provided: ${item.serials.length}\n';
         }
       }
     }
@@ -127,28 +128,15 @@ class OrderProvider with ChangeNotifier {
       notifyListeners();
       AppAlerts.appToast(
           message:
-              "Delivery note validation failed, please check the log in above");
+          "Delivery note validation failed, please check the log in above");
       return;
     }
 
     try {
-      // Get the next available delivery note number
-      final maxDnQuery =
-          "SELECT MAX(DnNumber) as maxDn FROM DNoteHeader WHERE CmpyCode = '$companyCode'";
-      final maxDnResult = await _sqlConnection.getData(maxDnQuery);
-      String nextDnNumber = "DN00001"; // Default starting number
+      // 1. Get the next DN number and increment it if necessary
+      String nextDnNumber = await _getNextDnNumber();
 
-      if (maxDnResult.isNotEmpty) {
-        // Parse the string result to get the max DN number
-        final maxDn = maxDnResult;
-        if (maxDn.isNotEmpty && maxDn != "null") {
-          // Extract the numeric part and increment
-          final numericPart = int.tryParse(maxDn.substring(2)) ?? 0;
-          nextDnNumber = "DN${(numericPart + 1).toString().padLeft(5, '0')}";
-        }
-      }
-
-      // 1. Create DeliveryNoteHeader
+      // 2. Create DeliveryNoteHeader
       final deliveryNoteHeader = DeliveryNoteHeader(
         cmpyCode: order.companyCode,
         dnNumber: nextDnNumber,
@@ -164,7 +152,7 @@ class OrderProvider with ChangeNotifier {
         curCode: 'AED',
         exRate: 1,
         dnType: 'D',
-        qty: order.items.length,
+        qty: order.items.fold(0.0, (double sum, item) => sum + item.qtyIssued).round(),
         dTime: TimeOfDay.now(),
         loginUser: username,
         creditLimitAmount: 0,
@@ -178,50 +166,51 @@ class OrderProvider with ChangeNotifier {
 
       // Post header
       final headerQuery = '''
-INSERT INTO DNoteHeader (
-  Cmpycode, DnNumber, LocCode, Dates, CustomerCode, SalesmanCode, 
-  SoNumber, RefNo, Status, InvStat, Discount, CurCode, ExRate, 
-  DnType, Qty, DTime, LoginUser, CreditLimitAmount, OutstandingBalance, 
-  GrossAmount, Narration, CommissionYN, Supplier, DYType
-) VALUES (
-  '${deliveryNoteHeader.cmpyCode}', 
-  '${deliveryNoteHeader.dnNumber}', 
-  '${deliveryNoteHeader.locCode}', 
-  CONVERT(DATETIME, '${DateFormat('yyyy-MM-dd').format(deliveryNoteHeader.dates)}', 120), 
-  '${deliveryNoteHeader.customerCode}', 
-  '${deliveryNoteHeader.salesmanCode}',
-  '${deliveryNoteHeader.soNumber}', 
-  '${deliveryNoteHeader.refNo}', 
-  '${deliveryNoteHeader.status}', 
-  '${deliveryNoteHeader.invStat}', 
-  ${deliveryNoteHeader.discount}, 
-  '${deliveryNoteHeader.curCode}', 
-  ${deliveryNoteHeader.exRate},
-  '${deliveryNoteHeader.dnType}', 
-  ${deliveryNoteHeader.qty}, 
-  CONVERT(TIME, '${deliveryNoteHeader.dTime.hour.toString().padLeft(2, '0')}:${deliveryNoteHeader.dTime.minute.toString().padLeft(2, '0')}:00'), 
-  '${deliveryNoteHeader.loginUser}', 
-  ${deliveryNoteHeader.creditLimitAmount}, 
-  ${deliveryNoteHeader.outstandingBalance},
-  ${deliveryNoteHeader.grossAmount}, 
-  '${deliveryNoteHeader.narration}', 
-  '${deliveryNoteHeader.commissionYN}', 
-  '${deliveryNoteHeader.supplier}', 
-  '${deliveryNoteHeader.dyType}'
-)
-''';
+    INSERT INTO DNoteHeader (
+      Cmpycode, DnNumber, LocCode, Dates, CustomerCode, SalesmanCode, 
+      SoNumber, RefNo, Status, InvStat, Discount, CurCode, ExRate, 
+      DnType, Qty, DTime, LoginUser, CreditLimitAmount, OutstandingBalance, 
+      GrossAmount, Narration, CommissionYN, Supplier, DYType
+    ) VALUES (
+      '${deliveryNoteHeader.cmpyCode}', 
+      '${deliveryNoteHeader.dnNumber}', 
+      '${deliveryNoteHeader.locCode}', 
+      CONVERT(DATETIME, '${DateFormat('yyyy-MM-dd').format(deliveryNoteHeader.dates)}', 120), 
+      '${deliveryNoteHeader.customerCode}', 
+      '${deliveryNoteHeader.salesmanCode}',
+      '${deliveryNoteHeader.soNumber}', 
+      '${deliveryNoteHeader.refNo}', 
+      '${deliveryNoteHeader.status}', 
+      '${deliveryNoteHeader.invStat}', 
+      ${deliveryNoteHeader.discount}, 
+      '${deliveryNoteHeader.curCode}', 
+      ${deliveryNoteHeader.exRate},
+      '${deliveryNoteHeader.dnType}', 
+      ${deliveryNoteHeader.qty}, 
+      CONVERT(TIME, '${deliveryNoteHeader.dTime.hour.toString().padLeft(2, '0')}:${deliveryNoteHeader.dTime.minute.toString().padLeft(2, '0')}:00'), 
+      '${deliveryNoteHeader.loginUser}', 
+      ${deliveryNoteHeader.creditLimitAmount}, 
+      ${deliveryNoteHeader.outstandingBalance},
+      ${deliveryNoteHeader.grossAmount}, 
+      '${deliveryNoteHeader.narration}', 
+      '${deliveryNoteHeader.commissionYN}', 
+      '${deliveryNoteHeader.supplier}', 
+      '${deliveryNoteHeader.dyType}'
+    )
+    ''';
 
       print('Posting delivery note header with DN: $nextDnNumber...');
       await _sqlConnection.writeData(headerQuery);
       print('Header posted successfully with DN: $nextDnNumber');
 
-      // 2. Create and post DeliveryNoteDetails for each item
+      // 3. Create and post DeliveryNoteDetails for each item
       for (var item in order.items) {
+        final bsno = order.items.indexOf(item) + 1;
         final detail = DeliveryNoteDetail(
           cmpyCode: order.companyCode,
           dnNumber: deliveryNoteHeader.dnNumber,
           locCode: order.locationCode,
-          sno: order.items.indexOf(item) + 1,
+          sno: bsno,
           itemCode: item.itemCode,
           barcode: null,
           description: item.itemName,
@@ -234,7 +223,7 @@ INSERT INTO DNoteHeader (
           discount: 0,
           closingStock: item.stockQty - item.qtyIssued,
           avgCost: 0,
-          srNo: item.serials.isNotEmpty ? item.serials.first.serialNo : null,
+          srNo: bsno.toString(),
           soNumber: order.soNumber,
           cogsamt: 0,
           nonInventory: item.nonInventory,
@@ -243,7 +232,7 @@ INSERT INTO DNoteHeader (
           qtyReserved: 0,
           poQty: 0,
           totReservedQty: 0,
-          bSno: null,
+          bSno: bsno.toString(),
           soQty: item.qtyOrdered,
           taxCode: null,
           taxPercentage: 0,
@@ -253,54 +242,54 @@ INSERT INTO DNoteHeader (
         );
 
         final detailQuery = '''
-      INSERT INTO DnoteDetail (
-        CmpyCode, DnNumber, LocCode, Sno, ItemCode, Barcode, Description, 
-        Unit, QtyOrdered, QtyIssued, UnitPrice, GrossTotal, DiscountP, 
-        Discount, ClosingStock, AvgCost, SrNo, SoNumber, cogsamt, 
-        NonInventory, IsFreeofCost, ParentItem, QtyReserved, PoQty, 
-        TotReservedQty, BSno, SoQty, TaxCode, TaxPercentage, BinCode, 
-        CommAmount, Commission
-      ) VALUES (
-        '${detail.cmpyCode}', 
-        '${detail.dnNumber}', 
-        '${detail.locCode}', 
-        ${detail.sno}, 
-        '${detail.itemCode}', 
-        ${detail.barcode != null ? "'${detail.barcode}'" : 'NULL'}, 
-        '${detail.description}',
-        '${detail.unit}', 
-        ${detail.qtyOrdered}, 
-        ${detail.qtyIssued}, 
-        ${detail.unitPrice}, 
-        ${detail.grossTotal}, 
-        ${detail.discountP},
-        ${detail.discount}, 
-        ${detail.closingStock}, 
-        ${detail.avgCost}, 
-        ${detail.srNo != null ? "'${detail.srNo}'" : 'NULL'}, 
-        '${detail.soNumber}', 
-        ${detail.cogsamt},
-        ${detail.nonInventory ? 1 : 0}, 
-        ${detail.isFreeofCost ? 1 : 0}, 
-        ${detail.parentItem != null ? "'${detail.parentItem}'" : 'NULL'}, 
-        ${detail.qtyReserved}, 
-        ${detail.poQty},
-        ${detail.totReservedQty}, 
-        ${detail.bSno != null ? "'${detail.bSno}'" : 'NULL'}, 
-        ${detail.soQty}, 
-        ${detail.taxCode != null ? "'${detail.taxCode}'" : 'NULL'}, 
-        ${detail.taxPercentage},
-        ${detail.binCode != null ? "'${detail.binCode}'" : 'NULL'}, 
-        ${detail.commAmount ?? 'NULL'}, 
-        ${detail.commission ?? 'NULL'}
-      )
-      ''';
+    INSERT INTO DnoteDetail (
+      CmpyCode, DnNumber, LocCode, Sno, ItemCode, Barcode, Description, 
+      Unit, QtyOrdered, QtyIssued, UnitPrice, GrossTotal, DiscountP, 
+      Discount, ClosingStock, AvgCost, SrNo, SoNumber, cogsamt, 
+      NonInventory, IsFreeofCost, ParentItem, QtyReserved, PoQty, 
+      TotReservedQty, BSno, SoQty, TaxCode, TaxPercentage, BinCode, 
+      CommAmount, Commission
+    ) VALUES (
+      '${detail.cmpyCode}', 
+      '${detail.dnNumber}', 
+      '${detail.locCode}', 
+      ${detail.sno}, 
+      '${detail.itemCode}', 
+      ${detail.barcode != null ? "'${detail.barcode}'" : 'NULL'}, 
+      '${detail.description}',
+      '${detail.unit}', 
+      ${detail.qtyOrdered}, 
+      ${detail.qtyIssued}, 
+      ${detail.unitPrice}, 
+      ${detail.grossTotal}, 
+      ${detail.discountP},
+      ${detail.discount}, 
+      ${detail.closingStock}, 
+      ${detail.avgCost}, 
+      ${detail.srNo != null ? "'${detail.srNo}'" : 'NULL'}, 
+      '${detail.soNumber}', 
+      ${detail.cogsamt},
+      ${detail.nonInventory ? 1 : 0}, 
+      ${detail.isFreeofCost ? 1 : 0}, 
+      ${detail.parentItem != null ? "'${detail.parentItem}'" : 'NULL'}, 
+      ${detail.qtyReserved}, 
+      ${detail.poQty},
+      ${detail.totReservedQty}, 
+      ${detail.bSno != null ? "'${detail.bSno}'" : 'NULL'}, 
+      ${detail.soQty}, 
+      ${detail.taxCode != null ? "'${detail.taxCode}'" : 'NULL'}, 
+      ${detail.taxPercentage},
+      ${detail.binCode != null ? "'${detail.binCode}'" : 'NULL'}, 
+      ${detail.commAmount ?? 'NULL'}, 
+      ${detail.commission ?? 'NULL'}
+    )
+    ''';
 
         print('Posting detail for item ${item.itemCode}...');
         await _sqlConnection.writeData(detailQuery);
         print('Detail posted for item ${item.itemCode}');
 
-        // 3. Post serial numbers if item is serialized
+        // 4. Post serial numbers if item is serialized
         if (item.serialYN && item.serials.isNotEmpty) {
           for (var serial in item.serials) {
             final serialDetail = InventoryDetailSerialNo(
@@ -309,25 +298,25 @@ INSERT INTO DNoteHeader (
               sno: serial.sNo.toString(),
               itemCode: item.itemCode,
               serialNo: serial.serialNo,
-              srNo: "1",
+              srNo: bsno.toString(),
               dnNumber: deliveryNoteHeader.dnNumber,
               returnYN: false,
             );
 
             final serialQuery = '''
-          INSERT INTO InvDetailSerials_DN (
-            CmpyCode, InvNumber, Sno, ItemCode, SerialNo, SrNo, DnNumber, ReturnYN
-          ) VALUES (
-            '${serialDetail.cmpyCode}', 
-            '${serialDetail.invNumber}', 
-            '${serialDetail.sno}', 
-            '${serialDetail.itemCode}', 
-            '${serialDetail.serialNo}', 
-            '${serialDetail.srNo}', 
-            '${serialDetail.dnNumber}', 
-            ${serialDetail.returnYN ? 1 : 0}
-          )
-          ''';
+        INSERT INTO InvDetailSerials_DN (
+          CmpyCode, InvNumber, Sno, ItemCode, SerialNo, SrNo, DnNumber, ReturnYN
+        ) VALUES (
+          '${serialDetail.cmpyCode}', 
+          '${serialDetail.invNumber}', 
+          '${serialDetail.sno}', 
+          '${serialDetail.itemCode}', 
+          '${serialDetail.serialNo}', 
+          '${serialDetail.srNo}', 
+          '${serialDetail.dnNumber}', 
+          ${serialDetail.returnYN ? 1 : 0}
+        )
+        ''';
 
             print('Posting serial ${serial.serialNo}...');
             await _sqlConnection.writeData(serialQuery);
@@ -335,6 +324,7 @@ INSERT INTO DNoteHeader (
           }
         }
       }
+
       AppAlerts.appToast(
           message: "Delivery note $nextDnNumber posted successfully");
     } catch (e, stackTrace) {
@@ -345,6 +335,26 @@ INSERT INTO DNoteHeader (
           message: "Failed to post delivery note: ${e.toString()}");
     }
   }
+
+  Future<String> _getNextDnNumber() async {
+    final query = '''
+  SELECT DnNumber 
+  FROM DNoteHeader 
+  WHERE DnNumber LIKE 'DN%' 
+  ORDER BY DnNumber DESC 
+  ''';
+    final result = await _sqlConnection.getData(query);
+    final resultJson = jsonDecode(result);
+    if (resultJson.isEmpty) {
+      return 'DN00001';
+    } else {
+      final lastDn = resultJson[0]['DnNumber'] as String;
+      final lastNumber = int.parse(lastDn.replaceAll('DN', ''));
+      final nextNumber = lastNumber + 1;
+      return 'DN${nextNumber.toString().padLeft(5, '0')}';
+    }
+  }
+
 
   // Scanner instance
   FlutterDataWedge? dataWedge;

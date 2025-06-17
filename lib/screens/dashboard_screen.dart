@@ -33,31 +33,17 @@ class DashboardScreen extends StatelessWidget {
         childAspectRatio: 1.2,
         children: [
           DashboardCard(
-            title: 'Total Sales Orders',
+            title: 'Sales Orders',
             value: "",
             icon: Icons.shopping_cart,
             color: Colors.blue,
             onTap: () => Navigator.of(context).pushNamed('/sales-orders'),
           ),
           DashboardCard(
-            title: 'Pending Sales Orders',
-            value: "",
-            icon: Icons.pending_actions,
-            color: Colors.orange,
-            onTap: () => Navigator.of(context).pushNamed('/sales-orders'),
-          ),
-          DashboardCard(
-            title: 'Total Purchase Orders',
+            title: 'Purchase Orders',
             value: "",
             icon: Icons.inventory,
             color: Colors.green,
-            onTap: () => Navigator.of(context).pushNamed('/purchase-orders'),
-          ),
-          DashboardCard(
-            title: 'Pending Purchase Orders',
-            value: "123",
-            icon: Icons.pending,
-            color: Colors.red,
             onTap: () => Navigator.of(context).pushNamed('/purchase-orders'),
           ),
         ],

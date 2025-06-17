@@ -47,6 +47,7 @@ class PurchaseOrderItem {
   final String itemCode;
   final String itemName;
   final String unit;
+  final double unitPrice;
   final double qtyOrdered;
   double qtyReceived;
   final bool nonInventory;
@@ -57,6 +58,7 @@ class PurchaseOrderItem {
     required this.itemCode,
     required this.itemName,
     required this.unit,
+    required this.unitPrice,
     required this.qtyOrdered,
     this.qtyReceived = 0,
     required this.nonInventory,
@@ -69,6 +71,7 @@ class PurchaseOrderItem {
       itemCode: json['ItemCode'].toString(),
       itemName: json['ItemName'].toString(),
       unit: json['Unit'].toString(),
+      unitPrice: double.tryParse(json['UnitPrice'].toString()) ?? 0.0,
       qtyOrdered: double.parse(json['QtyOrdered'].toString()),
       nonInventory: json['NonInventory'] == 1,
       serialYN: json['SerialYN'] == 1,

@@ -107,7 +107,9 @@ class _PurchaseOrderDetailScreenState extends State<PurchaseOrderDetailScreen> {
 
     if (order == null) {
       return Scaffold(
-        appBar: AppBar(),
+        appBar: AppBar(
+
+        ),
         body: const Center(child: Text('Order not found')),
       );
     }
@@ -125,8 +127,12 @@ class _PurchaseOrderDetailScreenState extends State<PurchaseOrderDetailScreen> {
                   tooltip: 'View validation details',
                 );
               }
-              return const SizedBox.shrink();
+              // return const SizedBox.shrink();
+              return IconButton(onPressed: (){
+                provider.getNextGrnNumber();
+              }, icon: Icon(Icons.abc));
             },
+
           )        ],
       ),
       body: SingleChildScrollView(
