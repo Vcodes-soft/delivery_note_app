@@ -122,7 +122,7 @@ class _ServerConfigScreenState extends State<ServerConfigScreen> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const FlutterLogo(size: 100),
+                    Image.asset("assets/logo/techsys_logo.png", height: 100),
                     const SizedBox(height: 24),
                     const Text(
                       'Server Configuration',

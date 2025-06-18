@@ -172,7 +172,7 @@ class _AuthScreenState extends State<AuthScreen> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const FlutterLogo(size: 100),
+                      Image.asset("assets/logo/techsys_logo.png", height: 100),
                       const SizedBox(height: 24),
                       TextFormField(
                         controller: _usernameController,
