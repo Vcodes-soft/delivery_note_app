@@ -156,7 +156,7 @@ class PurchaseOrderProvider with ChangeNotifier {
       debugPrint("Failed to stop scanner: $e");
       rethrow;
     } finally {
-      notifyListeners();
+      // notifyListeners();
     }
   }
 

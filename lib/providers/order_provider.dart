@@ -83,6 +83,7 @@ class OrderProvider with ChangeNotifier {
   Future<void> postDeliveryNote(BuildContext context, String soNumber) async {
     validationMessage = "";
     isValidForPosting = true;
+    setLoading(true);
     final order = getSalesOrderById(soNumber);
     SharedPreferences prefs = await SharedPreferences.getInstance();
     final String companyCode = prefs.getString('companyCode') ?? "";
@@ -102,7 +103,7 @@ class OrderProvider with ChangeNotifier {
         if (item.stockQty < item.qtyIssued) {
           isValidForPosting = false;
           validationMessage +=
-          'Insufficient stock for ${item.itemCode} - ${item.itemName}. Available: ${item.stockQty}, Issued: ${item.qtyIssued}\n';
+              'Insufficient stock for ${item.itemCode} - ${item.itemName}. Available: ${item.stockQty}, Issued: ${item.qtyIssued}\n';
         }
       }
 
@@ -110,7 +111,7 @@ class OrderProvider with ChangeNotifier {
       if (item.qtyIssued > item.qtyOrdered) {
         isValidForPosting = false;
         validationMessage +=
-        'Quantity issued cannot exceed quantity ordered for ${item.itemCode} - ${item.itemName}. Issued: ${item.qtyIssued}, Ordered: ${item.qtyOrdered}\n';
+            'Quantity issued cannot exceed quantity ordered for ${item.itemCode} - ${item.itemName}. Issued: ${item.qtyIssued}, Ordered: ${item.qtyOrdered}\n';
       }
 
       // Check serial numbers for serialized items
@@ -118,7 +119,7 @@ class OrderProvider with ChangeNotifier {
         if (item.serials.length != item.qtyIssued) {
           isValidForPosting = false;
           validationMessage +=
-          'Serial numbers required for ${item.itemCode} - ${item.itemName}. Expected: ${item.qtyOrdered}, Provided: ${item.serials.length}\n';
+              'Serial numbers required for ${item.itemCode} - ${item.itemName}. Expected: ${item.qtyOrdered}, Provided: ${item.serials.length}\n';
         }
       }
     }
@@ -128,7 +129,7 @@ class OrderProvider with ChangeNotifier {
       notifyListeners();
       AppAlerts.appToast(
           message:
-          "Delivery note validation failed, please check the log in above");
+              "Delivery note validation failed, please check the log in above");
       return;
     }
 
@@ -152,7 +153,9 @@ class OrderProvider with ChangeNotifier {
         curCode: 'AED',
         exRate: 1,
         dnType: 'D',
-        qty: order.items.fold(0.0, (double sum, item) => sum + item.qtyIssued).round(),
+        qty: order.items
+            .fold(0.0, (double sum, item) => sum + item.qtyIssued)
+            .round(),
         dTime: TimeOfDay.now(),
         loginUser: username,
         creditLimitAmount: 0,
@@ -326,13 +329,17 @@ class OrderProvider with ChangeNotifier {
       }
 
       AppAlerts.appToast(
-          message: "Delivery note $nextDnNumber posted successfully");
+          message: "Delivery note $nextDnNumber posted successfully",
+          bgColor: Colors.green,
+          textColor: Colors.white);
     } catch (e, stackTrace) {
       print('ERROR in postDeliveryNote:');
       print('Message: $e');
       print('Stack trace: $stackTrace');
       AppAlerts.appToast(
           message: "Failed to post delivery note: ${e.toString()}");
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -340,21 +347,20 @@ class OrderProvider with ChangeNotifier {
     final query = '''
   SELECT DnNumber 
   FROM DNoteHeader 
-  WHERE DnNumber LIKE 'DN%' 
+  WHERE DnNumber LIKE 'ADN%' 
   ORDER BY DnNumber DESC 
   ''';
     final result = await _sqlConnection.getData(query);
     final resultJson = jsonDecode(result);
     if (resultJson.isEmpty) {
-      return 'DN00001';
+      return 'ADN00001';
     } else {
       final lastDn = resultJson[0]['DnNumber'] as String;
-      final lastNumber = int.parse(lastDn.replaceAll('DN', ''));
+      final lastNumber = int.parse(lastDn.replaceAll('ADN', ''));
       final nextNumber = lastNumber + 1;
-      return 'DN${nextNumber.toString().padLeft(5, '0')}';
+      return 'ADN${nextNumber.toString().padLeft(6, '0')}';
     }
   }
-
 
   // Scanner instance
   FlutterDataWedge? dataWedge;
@@ -449,7 +455,7 @@ class OrderProvider with ChangeNotifier {
       debugPrint("Failed to stop scanner: $e");
       rethrow;
     } finally {
-      notifyListeners();
+      // notifyListeners();
     }
   }
 

@@ -63,7 +63,7 @@ class PurchaseOrderItem {
     this.qtyReceived = 0,
     required this.nonInventory,
     required this.serialYN,
-    this.serials = const [],
+    required this.serials,
   });
 
   factory PurchaseOrderItem.fromJson(Map<String, dynamic> json) {
@@ -75,7 +75,8 @@ class PurchaseOrderItem {
       qtyOrdered: double.parse(json['QtyOrdered'].toString()),
       nonInventory: json['NonInventory'] == 1,
       serialYN: json['SerialYN'] == 1,
-      qtyReceived: 0
+      qtyReceived: 0,
+      serials: []
     );
   }
 

@@ -48,6 +48,7 @@ class _AddLotDialogState extends State<AddLotDialog> {
     );
 
     return AlertDialog(
+
       title: Text('Scan Serial for ${item?.itemName}'),
       content: SingleChildScrollView(
         child: Column(
@@ -170,7 +171,7 @@ class _AddLotDialogState extends State<AddLotDialog> {
   @override
   void dispose() {
     // Stop scanning when dialog is disposed
-    Provider.of<OrderProvider>(context, listen: false).stopScanner();
+    // Provider.of<OrderProvider>(context, listen: false).stopScanner();
     _serialController.dispose();
     super.dispose();
   }
@@ -333,7 +334,7 @@ class _POAddLotDialogState extends State<POAddLotDialog> {
   @override
   void dispose() {
     // Stop scanning when dialog is disposed
-    Provider.of<PurchaseOrderProvider>(context, listen: false).stopScanner();
+
     _serialController.dispose();
     super.dispose();
   }

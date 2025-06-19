@@ -43,8 +43,7 @@ class _SalesOrderDetailScreenState extends State<SalesOrderDetailScreen> {
               Row(
                 children: [
                   Icon(Icons.warning_amber_rounded,
-                      color: Colors.orange[700],
-                      size: 28),
+                      color: Colors.orange[700], size: 28),
                   const SizedBox(width: 12),
                   Text('Validation Required',
                       style: theme.textTheme.titleLarge?.copyWith(
@@ -77,7 +76,8 @@ class _SalesOrderDetailScreenState extends State<SalesOrderDetailScreen> {
                 child: TextButton(
                   style: TextButton.styleFrom(
                     foregroundColor: Colors.orange[700],
-                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(8),
                     ),
@@ -97,7 +97,8 @@ class _SalesOrderDetailScreenState extends State<SalesOrderDetailScreen> {
   String _formatValidationMessage(String rawMessage) {
     // Add bullet points for each line if multiline
     if (rawMessage.contains('\n')) {
-      return rawMessage.split('\n')
+      return rawMessage
+          .split('\n')
           .map((line) => line.trim().isNotEmpty ? '• $line' : '')
           .join('\n');
     }
@@ -124,14 +125,17 @@ class _SalesOrderDetailScreenState extends State<SalesOrderDetailScreen> {
             builder: (context, provider, _) {
               if (provider.validationMessage.isNotEmpty) {
                 return IconButton(
-                  onPressed: () => _showValidationDialog(context, provider.validationMessage),
-                  icon: const Icon(Icons.error_outline, color: Colors.redAccent),
+                  onPressed: () => _showValidationDialog(
+                      context, provider.validationMessage),
+                  icon:
+                      const Icon(Icons.error_outline, color: Colors.redAccent),
                   tooltip: 'View validation details',
                 );
               }
               return const SizedBox.shrink();
             },
-          )        ],
+          )
+        ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
@@ -172,18 +176,24 @@ class _SalesOrderDetailScreenState extends State<SalesOrderDetailScreen> {
                 )),
             const SizedBox(height: 24),
             Center(
-              child: ElevatedButton(
-                onPressed: () {
-                  Provider.of<OrderProvider>(context, listen: false)
-                      .postDeliveryNote(context, widget.soNumber);
-                },
-                style: ElevatedButton.styleFrom(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-                ),
-                child: const Text('Post Delivery Note',
-                    style: TextStyle(fontSize: 18)),
-              ),
+              child: Consumer<OrderProvider>(builder: (context, provider, _) {
+                return Visibility(
+                  visible: !provider.isLoading,
+                  replacement: CircularProgressIndicator(),
+                  child: ElevatedButton(
+                    onPressed: () {
+                      Provider.of<OrderProvider>(context, listen: false)
+                          .postDeliveryNote(context, widget.soNumber);
+                    },
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 32, vertical: 16),
+                    ),
+                    child: const Text('Post Delivery Note',
+                        style: TextStyle(fontSize: 18)),
+                  ),
+                );
+              }),
             ),
             const SizedBox(height: 24),
           ],
