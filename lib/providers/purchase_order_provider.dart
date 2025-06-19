@@ -367,6 +367,7 @@ class PurchaseOrderProvider with ChangeNotifier {
       // Check if serial exists in other items or database
       final isUnique = await isSerialUnique(itemCode: itemCode, serialNo: serialNo);
       if (!isUnique) {
+        AppAlerts.appToast(message: 'Serial number $serialNo already exists in another item');
         throw Exception('Serial number $serialNo already exists in another item');
       }
 
