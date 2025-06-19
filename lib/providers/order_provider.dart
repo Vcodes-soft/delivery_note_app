@@ -35,25 +35,66 @@ class OrderProvider with ChangeNotifier {
 
       final data = jsonDecode(result) as List;
 
-      // Create a map to group orders by SO number
       final ordersMap = <String, SalesOrder>{};
 
       for (var json in data) {
         final soNumber = json['SoNumber'].toString();
 
         if (!ordersMap.containsKey(soNumber)) {
-          // Create new order with first item
           ordersMap[soNumber] = SalesOrder.fromJson(json);
         } else {
-          // Add item to existing order
           ordersMap[soNumber]!.addItem(json);
         }
       }
 
-      // Convert map values to list
       _salesOrders = ordersMap.values.toList();
     } catch (e) {
       _error = 'Failed to fetch orders: ${e.toString()}';
+      rethrow;
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> fetchSalesOrderDetails(String soNumber) async {
+    try {
+      _isLoading = true;
+      notifyListeners();
+
+      final result = await _sqlConnection.getData("""
+      SELECT * FROM VW_DM_SODetails_Items 
+      WHERE SoNumber = '$soNumber'
+      ORDER BY Sno
+      """);
+
+      final data = jsonDecode(result) as List;
+
+      // Find existing order or create new one
+      SalesOrder? order = getSalesOrderById(soNumber);
+      if (order == null) {
+        // If order not found in list, fetch header details
+        final headerResult = await _sqlConnection.getData("""
+        SELECT TOP 1 * FROM VW_DM_SODetails 
+        WHERE SoNumber = '$soNumber'
+        """);
+
+        final headerData = jsonDecode(headerResult) as List;
+        if (headerData.isEmpty) throw Exception('Order not found');
+
+        order = SalesOrder.fromJson(headerData.first);
+        _salesOrders.add(order);
+      }
+
+      // Clear existing items and add new ones
+      order.items.clear();
+      for (var json in data) {
+        order.addItem(json);
+      }
+
+      notifyListeners();
+    } catch (e) {
+      _error = 'Failed to fetch order details: ${e.toString()}';
       rethrow;
     } finally {
       _isLoading = false;
@@ -76,7 +117,6 @@ class OrderProvider with ChangeNotifier {
     }
   }
 
-  // Validate stock and quantities before proceeding
   bool isValidForPosting = true;
   String validationMessage = '';
 
@@ -97,47 +137,40 @@ class OrderProvider with ChangeNotifier {
 
     // Validate each item's stock and quantities
     for (var item in order.items) {
-      // Skip validation for non-inventory items
       if (!item.nonInventory) {
-        // Check if stock is sufficient
         if (item.stockQty < item.qtyIssued) {
           isValidForPosting = false;
           validationMessage +=
-              'Insufficient stock for ${item.itemCode} - ${item.itemName}. Available: ${item.stockQty}, Issued: ${item.qtyIssued}\n';
+          'Insufficient stock for ${item.itemCode} - ${item.itemName}. Available: ${item.stockQty}, Issued: ${item.qtyIssued}\n';
         }
       }
 
-      // Check if qty issued is <= qty ordered (but not greater)
       if (item.qtyIssued > item.qtyOrdered) {
         isValidForPosting = false;
         validationMessage +=
-            'Quantity issued cannot exceed quantity ordered for ${item.itemCode} - ${item.itemName}. Issued: ${item.qtyIssued}, Ordered: ${item.qtyOrdered}\n';
+        'Quantity issued cannot exceed quantity ordered for ${item.itemCode} - ${item.itemName}. Issued: ${item.qtyIssued}, Ordered: ${item.qtyOrdered}\n';
       }
 
-      // Check serial numbers for serialized items
       if (item.serialYN && (item.qtyIssued > 0)) {
         if (item.serials.length != item.qtyIssued) {
           isValidForPosting = false;
           validationMessage +=
-              'Serial numbers required for ${item.itemCode} - ${item.itemName}. Expected: ${item.qtyOrdered}, Provided: ${item.serials.length}\n';
+          'Serial numbers required for ${item.itemCode} - ${item.itemName}. Expected: ${item.qtyOrdered}, Provided: ${item.serials.length}\n';
         }
       }
     }
 
-    // If validation fails, show error message and return
     if (!isValidForPosting) {
       notifyListeners();
       AppAlerts.appToast(
           message:
-              "Delivery note validation failed, please check the log in above");
+          "Delivery note validation failed, please check the log in above");
       return;
     }
 
     try {
-      // 1. Get the next DN number and increment it if necessary
       String nextDnNumber = await _getNextDnNumber();
 
-      // 2. Create DeliveryNoteHeader
       final deliveryNoteHeader = DeliveryNoteHeader(
         cmpyCode: order.companyCode,
         dnNumber: nextDnNumber,
@@ -167,7 +200,6 @@ class OrderProvider with ChangeNotifier {
         dyType: 'D',
       );
 
-      // Post header
       final headerQuery = '''
     INSERT INTO DNoteHeader (
       Cmpycode, DnNumber, LocCode, Dates, CustomerCode, SalesmanCode, 
@@ -206,7 +238,7 @@ class OrderProvider with ChangeNotifier {
       await _sqlConnection.writeData(headerQuery);
       print('Header posted successfully with DN: $nextDnNumber');
 
-      // 3. Create and post DeliveryNoteDetails for each item
+      // Post items
       for (var item in order.items) {
         final bsno = order.items.indexOf(item) + 1;
         final detail = DeliveryNoteDetail(
@@ -292,7 +324,7 @@ class OrderProvider with ChangeNotifier {
         await _sqlConnection.writeData(detailQuery);
         print('Detail posted for item ${item.itemCode}');
 
-        // 4. Post serial numbers if item is serialized
+        // Post serial numbers
         if (item.serialYN && item.serials.isNotEmpty) {
           for (var serial in item.serials) {
             final serialDetail = InventoryDetailSerialNo(
@@ -328,10 +360,33 @@ class OrderProvider with ChangeNotifier {
         }
       }
 
+      // Update SO status based on whether it's fully delivered
+      bool isFullyDelivered = true;
+      for (var item in order.items) {
+        if (item.qtyIssued < item.qtyOrdered) {
+          isFullyDelivered = false;
+          break;
+        }
+      }
+
+      final updateSoQuery = '''
+      UPDATE SoHeader 
+      SET Status = '${isFullyDelivered ? 'C' : 'O'}', 
+          DelStat = '${isFullyDelivered ? 'Y' : 'N'}'
+      WHERE SoNumber = '${order.soNumber}' AND CmpyCode = '${order.companyCode}'
+      ''';
+
+      print('Updating SO status...');
+      await _sqlConnection.writeData(updateSoQuery);
+      print('SO status updated');
+
       AppAlerts.appToast(
           message: "Delivery note $nextDnNumber posted successfully",
           bgColor: Colors.green,
           textColor: Colors.white);
+
+      // Refresh the order details
+      await fetchSalesOrderDetails(soNumber);
     } catch (e, stackTrace) {
       print('ERROR in postDeliveryNote:');
       print('Message: $e');
@@ -362,14 +417,13 @@ class OrderProvider with ChangeNotifier {
     }
   }
 
-  // Scanner instance
   FlutterDataWedge? dataWedge;
   StreamSubscription? _scanSubscription;
   String _errorMessage = '';
   bool _isScannerActive = false;
   bool _scanCooldown = false;
   int _scanCount = 0;
-  // Getters
+
   bool get isScannerActive => _isScannerActive;
   int get scanCount => _scanCount;
 
@@ -393,12 +447,10 @@ class OrderProvider with ChangeNotifier {
     } catch (e) {
       setLoading(false);
       debugPrint("Failed to initialize scanner: $e");
-      // setErrorMessage("Scanner initialization failed. Please try again.");
       rethrow;
     }
   }
 
-  // Add these to your OrderProvider
   String? _scannedBarcode;
   String? get scannedBarcode => _scannedBarcode;
 
@@ -425,11 +477,10 @@ class OrderProvider with ChangeNotifier {
         if (barcode.isEmpty) return;
 
         _scanCount++;
-        _scannedBarcode = barcode; // Store the scanned barcode
+        _scannedBarcode = barcode;
         notifyListeners();
         debugPrint('Scanned barcode: $barcode');
 
-        // Add cooldown to prevent multiple scans
         _scanCooldown = true;
         Future.delayed(const Duration(milliseconds: 500), () {
           _scanCooldown = false;
@@ -455,7 +506,7 @@ class OrderProvider with ChangeNotifier {
       debugPrint("Failed to stop scanner: $e");
       rethrow;
     } finally {
-      // notifyListeners();
+      notifyListeners();
     }
   }
 
@@ -472,7 +523,6 @@ class OrderProvider with ChangeNotifier {
     required String itemCode,
   }) async {
     try {
-      // 1. Check current orders (only for matching itemCode)
       for (var order in salesOrders) {
         for (var item in order.items) {
           if (item.itemCode == itemCode && item.hasSerial(serialNo)) {
@@ -481,19 +531,17 @@ class OrderProvider with ChangeNotifier {
         }
       }
 
-      // 2. SAFE DATABASE CHECK - Using proper parameterization
       final escapedSerial = serialNo.replaceAll("'", "''");
       final escapedItemCode = itemCode.replaceAll("'", "''");
 
       final result = await _sqlConnection.getData(
           "SELECT TOP 1 1 FROM InvDetailSerials "
-          "WHERE SerialNo = '$escapedSerial' AND ItemCode = '$escapedItemCode'");
+              "WHERE SerialNo = '$escapedSerial' AND ItemCode = '$escapedItemCode'");
 
-      return result.isEmpty ||
-          result == "[]"; // Adapt based on your actual response format
+      return result.isEmpty || result == "[]";
     } catch (e) {
       print('Error checking serial uniqueness: $e');
-      return false; // Fail-safe
+      return false;
     }
   }
 
@@ -507,34 +555,27 @@ class OrderProvider with ChangeNotifier {
       if (order == null) throw Exception('Order not found');
 
       final item = order.items.firstWhere(
-        (i) => i.itemCode == itemCode,
+            (i) => i.itemCode == itemCode,
         orElse: () => throw Exception('Item not found'),
       );
 
-      // Check if serial exists in other items or database
       final isUnique =
-          await isSerialUnique(itemCode: itemCode, serialNo: serialNo);
+      await isSerialUnique(itemCode: itemCode, serialNo: serialNo);
       if (!isUnique) {
         return AppAlerts.appToast(
             message: 'Serial number $serialNo already exists in another item');
       }
 
-      // if (item.hasSerial(serialNo)) {
-      //   throw Exception('Serial number already exists for this item');
-      // }
-
-      // Stock validation for non-inventory items
       if (!item.nonInventory) {
         if (item.stockQty <= 0) {
           return AppAlerts.appToast(
               message: 'Insufficient stock for item ${item.itemCode}');
         }
 
-        // Check if adding this serial would exceed available stock
         if (item.serials.length >= item.stockQty) {
           return AppAlerts.appToast(
               message:
-                  'Cannot add serial - would exceed available stock (${item.stockQty})');
+              'Cannot add serial - would exceed available stock (${item.stockQty})');
         }
       }
       item.qtyIssued++;
@@ -555,19 +596,17 @@ class OrderProvider with ChangeNotifier {
       if (order == null) throw Exception('Order not found');
 
       final item = order.items.firstWhere(
-        (i) => i.itemCode == itemCode,
+            (i) => i.itemCode == itemCode,
         orElse: () => throw Exception('Item not found'),
       );
 
       final initialLength = item.serials.length;
       item.serials.removeWhere((s) => s.serialNo == serialNo);
 
-      // Only decrement if a serial was actually removed
       if (item.serials.length < initialLength) {
         item.qtyIssued -= 1;
       }
 
-      // Recalculate positions
       for (int i = 0; i < item.serials.length; i++) {
         item.serials[i] = ItemSerial(
           serialNo: item.serials[i].serialNo,

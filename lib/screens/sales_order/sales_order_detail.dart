@@ -3,6 +3,7 @@ import 'package:delivery_note_app/providers/order_provider.dart';
 import 'package:delivery_note_app/widgets/add_lot_dialog.dart';
 import 'package:delivery_note_app/widgets/item_card.dart';
 import 'package:delivery_note_app/widgets/summary_card.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -20,9 +21,10 @@ class SalesOrderDetailScreen extends StatefulWidget {
 class _SalesOrderDetailScreenState extends State<SalesOrderDetailScreen> {
   @override
   void initState() {
-    // TODO: implement initState
     WidgetsBinding.instance.addPostFrameCallback((e) {
       Provider.of<OrderProvider>(context, listen: false).resetValidation();
+      Provider.of<OrderProvider>(context, listen: false)
+          .fetchSalesOrderDetails(widget.soNumber);
     });
     super.initState();
   }
@@ -77,7 +79,7 @@ class _SalesOrderDetailScreenState extends State<SalesOrderDetailScreen> {
                   style: TextButton.styleFrom(
                     foregroundColor: Colors.orange[700],
                     padding:
-                        const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+                    const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(8),
                     ),
@@ -93,9 +95,7 @@ class _SalesOrderDetailScreenState extends State<SalesOrderDetailScreen> {
     );
   }
 
-// Helper function to format the message
   String _formatValidationMessage(String rawMessage) {
-    // Add bullet points for each line if multiline
     if (rawMessage.contains('\n')) {
       return rawMessage
           .split('\n')
@@ -107,13 +107,13 @@ class _SalesOrderDetailScreenState extends State<SalesOrderDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final order =
-        Provider.of<OrderProvider>(context).getSalesOrderById(widget.soNumber);
+    final orderProvider = Provider.of<OrderProvider>(context);
+    final order = orderProvider.getSalesOrderById(widget.soNumber);
 
-    if (order == null) {
+    if (order == null || orderProvider.isLoading) {
       return Scaffold(
         appBar: AppBar(),
-        body: const Center(child: Text('Order not found')),
+        body: const Center(child: CupertinoActivityIndicator()),
       );
     }
 
@@ -128,7 +128,7 @@ class _SalesOrderDetailScreenState extends State<SalesOrderDetailScreen> {
                   onPressed: () => _showValidationDialog(
                       context, provider.validationMessage),
                   icon:
-                      const Icon(Icons.error_outline, color: Colors.redAccent),
+                  const Icon(Icons.error_outline, color: Colors.redAccent),
                   tooltip: 'View validation details',
                 );
               }
@@ -158,22 +158,21 @@ class _SalesOrderDetailScreenState extends State<SalesOrderDetailScreen> {
             const Text('Item Details',
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
-            // Display all items in the order
             ...order.items.map((item) => ItemCard(
-                  item: item,
+              item: item,
+              soNumber: order.soNumber,
+              onAddLotPressed: item.serialYN
+                  ? () => showDialog(
+                context: context,
+                builder: (context) => AddLotDialog(
                   soNumber: order.soNumber,
-                  onAddLotPressed: item.serialYN
-                      ? () => showDialog(
-                            context: context,
-                            builder: (context) => AddLotDialog(
-                              soNumber: order.soNumber,
-                              itemCode: item.itemCode,
-                              orderedQty: item.qtyOrdered,
-                              availableStock: item.stockQty,
-                            ),
-                          )
-                      : null,
-                )),
+                  itemCode: item.itemCode,
+                  orderedQty: item.qtyOrdered,
+                  availableStock: item.stockQty,
+                ),
+              )
+                  : null,
+            )),
             const SizedBox(height: 24),
             Center(
               child: Consumer<OrderProvider>(builder: (context, provider, _) {
