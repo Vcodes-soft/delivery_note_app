@@ -1,9 +1,11 @@
 // purchase_order_provider.dart
+import 'dart:async';
 import 'dart:convert';
 import 'package:delivery_note_app/models/sales_order_model.dart';
 import 'package:delivery_note_app/utils/app_alerts.dart';
 import 'package:delivery_note_app/utils/extensions.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_datawedge/flutter_datawedge.dart';
 import 'package:intl/intl.dart';
 import 'package:mssql_connection/mssql_connection.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -54,6 +56,106 @@ class PurchaseOrderProvider with ChangeNotifier {
       rethrow;
     } finally {
       _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  // Scanner instance
+  FlutterDataWedge? dataWedge;
+  StreamSubscription? _scanSubscription;
+  String _errorMessage = '';
+  bool _isScannerActive = false;
+  bool _scanCooldown = false;
+  int _scanCount = 0;
+  // Getters
+  bool get isScannerActive => _isScannerActive;
+  int get scanCount => _scanCount;
+
+  void setLoading(bool value) {
+    _isLoading = value;
+    notifyListeners();
+  }
+
+  Future<void> initializeScanner() async {
+    try {
+      setLoading(true);
+
+      if (dataWedge == null) {
+        dataWedge = FlutterDataWedge();
+        await dataWedge!.initialize();
+        await dataWedge!.createDefaultProfile(profileName: "DefaultProfile");
+        debugPrint("Scanner initialized");
+      }
+
+      setLoading(false);
+    } catch (e) {
+      setLoading(false);
+      debugPrint("Failed to initialize scanner: $e");
+      // setErrorMessage("Scanner initialization failed. Please try again.");
+      rethrow;
+    }
+  }
+
+  // Add these to your OrderProvider
+  String? _scannedBarcode;
+  String? get scannedBarcode => _scannedBarcode;
+
+  void clearScannedBarcode() {
+    _scannedBarcode = null;
+    notifyListeners();
+  }
+
+  Future<void> startScanning() async {
+    try {
+      notifyListeners();
+
+      if (dataWedge == null) {
+        await initializeScanner();
+      }
+
+      await dataWedge?.activateScanner(true);
+      _scanSubscription?.cancel();
+
+      _scanSubscription = dataWedge!.onScanResult.listen((result) async {
+        if (_scanCooldown) return;
+
+        final barcode = result.data.trim();
+        if (barcode.isEmpty) return;
+
+        _scanCount++;
+        _scannedBarcode = barcode; // Store the scanned barcode
+
+
+
+        notifyListeners();
+        debugPrint('Scanned barcode: $barcode');
+
+        // Add cooldown to prevent multiple scans
+        _scanCooldown = true;
+        Future.delayed(const Duration(milliseconds: 500), () {
+          _scanCooldown = false;
+        });
+      });
+
+      notifyListeners();
+      debugPrint('Scanner started');
+    } catch (e) {
+      debugPrint('Error starting scanner: $e');
+      await stopScanner();
+      rethrow;
+    }
+  }
+
+  Future<void> stopScanner() async {
+    try {
+      await dataWedge?.activateScanner(false);
+      _scanSubscription?.cancel();
+      _isScannerActive = false;
+      debugPrint('Scanner stopped');
+    } catch (e) {
+      debugPrint("Failed to stop scanner: $e");
+      rethrow;
+    } finally {
       notifyListeners();
     }
   }

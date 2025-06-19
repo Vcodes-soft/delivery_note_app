@@ -43,7 +43,7 @@ class _AddLotDialogState extends State<AddLotDialog> {
     final orderProvider = Provider.of<OrderProvider>(context);
     final order = orderProvider.getSalesOrderById(widget.soNumber);
     final item = order?.items.firstWhere(
-          (i) => i.itemCode == widget.itemCode,
+      (i) => i.itemCode == widget.itemCode,
       orElse: () => throw Exception('Item not found'),
     );
 
@@ -57,13 +57,13 @@ class _AddLotDialogState extends State<AddLotDialog> {
             ElevatedButton.icon(
               icon: _isScanning
                   ? const SizedBox(
-                width: 24,
-                height: 24,
-                child: CircularProgressIndicator(
-                  color: Colors.white,
-                  strokeWidth: 2,
-                ),
-              )
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(
+                        color: Colors.white,
+                        strokeWidth: 2,
+                      ),
+                    )
                   : const Icon(Icons.qr_code_scanner),
               label: Text(_isScanning ? 'Scanning...' : 'Scan Serial Number'),
               onPressed: _isScanning ? null : () => _scanSerial(context),
@@ -81,16 +81,17 @@ class _AddLotDialogState extends State<AddLotDialog> {
             const SizedBox(height: 24),
             // List of already scanned serials
             if (item!.serials.isNotEmpty) ...[
-              const Text('Scanned Serials:', style: TextStyle(fontWeight: FontWeight.bold)),
+              const Text('Scanned Serials:',
+                  style: TextStyle(fontWeight: FontWeight.bold)),
               const SizedBox(height: 8),
               ...item.serials.map((serial) => ListTile(
-                leading: Text('${serial.sNo}.'),
-                title: Text(serial.serialNo),
-                trailing: IconButton(
-                  icon: const Icon(Icons.delete, color: Colors.red),
-                  onPressed: () => _removeSerial(context, serial.serialNo),
-                ),
-              )),
+                    leading: Text('${serial.sNo}.'),
+                    title: Text(serial.serialNo),
+                    trailing: IconButton(
+                      icon: const Icon(Icons.delete, color: Colors.red),
+                      onPressed: () => _removeSerial(context, serial.serialNo),
+                    ),
+                  )),
             ],
           ],
         ),
@@ -115,12 +116,12 @@ class _AddLotDialogState extends State<AddLotDialog> {
 
       // Listen for scan results
       orderProvider.addListener(() {
-        if (orderProvider.scannedBarcode != null && orderProvider.scannedBarcode!.isNotEmpty) {
+        if (orderProvider.scannedBarcode != null &&
+            orderProvider.scannedBarcode!.isNotEmpty) {
           _handleScannedBarcode(context, orderProvider.scannedBarcode!);
           orderProvider.clearScannedBarcode(); // Clear after handling
         }
       });
-
     } catch (e) {
       setState(() => _isScanning = false);
       AppAlerts.appToast(message: 'Failed to start scanner: ${e.toString()}');
@@ -177,16 +178,15 @@ class _AddLotDialogState extends State<AddLotDialog> {
 
 ///------------------------PO-------------------
 
-
 class POAddLotDialog extends StatefulWidget {
-  final String soNumber;
+  final String poNumber;
   final String itemCode;
   final double orderedQty;
   final double availableStock;
 
   const POAddLotDialog({
     super.key,
-    required this.soNumber,
+    required this.poNumber,
     required this.itemCode,
     required this.orderedQty,
     required this.availableStock,
@@ -203,9 +203,9 @@ class _POAddLotDialogState extends State<POAddLotDialog> {
   @override
   Widget build(BuildContext context) {
     final orderProvider = Provider.of<PurchaseOrderProvider>(context);
-    final order = orderProvider.getPurchaseOrderById(widget.soNumber);
+    final order = orderProvider.getPurchaseOrderById(widget.poNumber);
     final item = order?.items.firstWhere(
-          (i) => i.itemCode == widget.itemCode,
+      (i) => i.itemCode == widget.itemCode,
       orElse: () => throw Exception('Item not found'),
     );
 
@@ -219,13 +219,13 @@ class _POAddLotDialogState extends State<POAddLotDialog> {
             ElevatedButton.icon(
               icon: _isScanning
                   ? const SizedBox(
-                width: 24,
-                height: 24,
-                child: CircularProgressIndicator(
-                  color: Colors.white,
-                  strokeWidth: 2,
-                ),
-              )
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(
+                        color: Colors.white,
+                        strokeWidth: 2,
+                      ),
+                    )
                   : const Icon(Icons.qr_code_scanner),
               label: Text(_isScanning ? 'Scanning...' : 'Scan Serial Number'),
               onPressed: _isScanning ? null : () => _scanSerial(context),
@@ -243,16 +243,17 @@ class _POAddLotDialogState extends State<POAddLotDialog> {
             const SizedBox(height: 24),
             // List of already scanned serials
             if (item!.serials.isNotEmpty) ...[
-              const Text('Scanned Serials:', style: TextStyle(fontWeight: FontWeight.bold)),
+              const Text('Scanned Serials:',
+                  style: TextStyle(fontWeight: FontWeight.bold)),
               const SizedBox(height: 8),
               ...item.serials.map((serial) => ListTile(
-                leading: Text('${serial.sNo}.'),
-                title: Text(serial.serialNo),
-                trailing: IconButton(
-                  icon: const Icon(Icons.delete, color: Colors.red),
-                  onPressed: () => _removeSerial(context, serial.serialNo),
-                ),
-              )),
+                    leading: Text('${serial.sNo}.'),
+                    title: Text(serial.serialNo),
+                    trailing: IconButton(
+                      icon: const Icon(Icons.delete, color: Colors.red),
+                      onPressed: () => _removeSerial(context, serial.serialNo),
+                    ),
+                  )),
             ],
           ],
         ),
@@ -267,7 +268,8 @@ class _POAddLotDialogState extends State<POAddLotDialog> {
   }
 
   Future<void> _scanSerial(BuildContext context) async {
-    final orderProvider = Provider.of<PurchaseOrderProvider>(context, listen: false);
+    final orderProvider =
+        Provider.of<PurchaseOrderProvider>(context, listen: false);
 
     try {
       setState(() => _isScanning = true);
@@ -277,12 +279,12 @@ class _POAddLotDialogState extends State<POAddLotDialog> {
 
       // Listen for scan results
       orderProvider.addListener(() {
-        if (orderProvider.scannedBarcode != null && orderProvider.scannedBarcode!.isNotEmpty) {
+        if (orderProvider.scannedBarcode != null &&
+            orderProvider.scannedBarcode!.isNotEmpty) {
           _handleScannedBarcode(context, orderProvider.scannedBarcode!);
           orderProvider.clearScannedBarcode(); // Clear after handling
         }
       });
-
     } catch (e) {
       setState(() => _isScanning = false);
       AppAlerts.appToast(message: 'Failed to start scanner: ${e.toString()}');
@@ -295,15 +297,16 @@ class _POAddLotDialogState extends State<POAddLotDialog> {
     } finally {
       setState(() => _isScanning = false);
       // Optionally stop scanning after successful scan
-      Provider.of<OrderProvider>(context, listen: false).stopScanner();
+      Provider.of<PurchaseOrderProvider>(context, listen: false).stopScanner();
     }
   }
 
   Future<void> _addSerial(BuildContext context, String serialNo) async {
-    final orderProvider = Provider.of<PurchaseOrderProvider>(context, listen: false);
+    final orderProvider =
+        Provider.of<PurchaseOrderProvider>(context, listen: false);
     try {
       await orderProvider.addSerialToItem(
-        poNumber: widget.soNumber,
+        poNumber: widget.poNumber,
         itemCode: widget.itemCode,
         serialNo: serialNo,
       );
@@ -314,24 +317,23 @@ class _POAddLotDialogState extends State<POAddLotDialog> {
   }
 
   void _removeSerial(BuildContext context, String serialNo) {
-    final orderProvider = Provider.of<OrderProvider>(context, listen: false);
+    final orderProvider =
+        Provider.of<PurchaseOrderProvider>(context, listen: false);
     try {
       orderProvider.removeSerialFromItem(
-        soNumber: widget.soNumber,
+        poNumber: widget.poNumber,
         itemCode: widget.itemCode,
         serialNo: serialNo,
       );
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString())),
-      );
+      AppAlerts.appToast(message: e.toString());
     }
   }
 
   @override
   void dispose() {
     // Stop scanning when dialog is disposed
-    Provider.of<OrderProvider>(context, listen: false).stopScanner();
+    Provider.of<PurchaseOrderProvider>(context, listen: false).stopScanner();
     _serialController.dispose();
     super.dispose();
   }
