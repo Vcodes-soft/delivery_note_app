@@ -23,6 +23,8 @@ class ItemCard extends StatefulWidget {
 }
 
 class _ItemCardState extends State<ItemCard> {
+  bool _isExpanded = false;
+
   @override
   Widget build(BuildContext context) {
     bool isSalesOrderItem = widget.item is SalesOrderItem;
@@ -45,10 +47,19 @@ class _ItemCardState extends State<ItemCard> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Flexible(
-                  child: Text(
-                    widget.item.itemName,
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
+                  child: GestureDetector(
+                    onTap:(){
+                      setState(() {
+                        _isExpanded = !_isExpanded;
+                      });
+                    },
+                    child: Text(
+                      widget.item.itemName,
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                      maxLines: _isExpanded ? null : 1,
+                      overflow: _isExpanded ? null : TextOverflow.ellipsis,
                     ),
                   ),
                 ),

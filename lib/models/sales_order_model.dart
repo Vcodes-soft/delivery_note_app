@@ -40,7 +40,7 @@ class SalesOrder {
       items: [
         SalesOrderItem(
           itemCode: json['ItemCode'].toString(),
-          itemName: json['ItemName'].toString(),
+          itemName: json['Description'].toString(),
           unit: json['Unit'].toString(),
           qtyOrdered: double.parse(json['QtyOrdered'].toString()),
           stockQty: double.parse(json['StockQty'].toString()),
@@ -57,7 +57,7 @@ class SalesOrder {
     items.add(
         SalesOrderItem(
           itemCode: json['ItemCode'].toString(),
-          itemName: json['ItemName'].toString(),
+          itemName: json['Description'].toString(),
           unit: json['Unit'].toString(),
           qtyOrdered: double.parse(json['QtyOrdered'].toString()),
           stockQty: double.parse(json['StockQty'].toString()),
