@@ -1,27 +1,9 @@
-import 'package:delivery_note_app/models/sales_order_model.dart';
+import 'package:delivery_note_app/providers/order_provider.dart';
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:delivery_note_app/providers/purchase_order_provider.dart';
 import 'package:delivery_note_app/utils/app_alerts.dart';
-import 'package:delivery_note_app/utils/app_constants.dart';
-import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-
-import '../../models/item_model.dart';
-import '../../providers/order_provider.dart';
-import 'package:delivery_note_app/models/sales_order_model.dart';
-import 'package:delivery_note_app/utils/app_alerts.dart';
-import 'package:delivery_note_app/utils/app_constants.dart';
-import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-
-import '../../models/item_model.dart';
-import '../../providers/order_provider.dart';
-
-import 'package:delivery_note_app/models/sales_order_model.dart';
-import 'package:delivery_note_app/providers/purchase_order_provider.dart';
-import 'package:delivery_note_app/utils/app_alerts.dart';
-import 'package:delivery_note_app/utils/app_constants.dart';
-import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
+import 'package:lottie/lottie.dart';
 
 class AddLotScreen extends StatefulWidget {
   final String soNumber;
@@ -51,42 +33,58 @@ class _AddLotScreenState extends State<AddLotScreen> {
   @override
   void initState() {
     super.initState();
+    // Ensure widget is mounted before starting scanning
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _startContinuousScanning();
+      if (mounted) {
+        _startContinuousScanning();
+      }
     });
   }
 
   @override
-  void dispose() {
-    _stopContinuousScanning();
-    _serialController.dispose();
-    _editSerialController.dispose();
-    super.dispose();
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final orderProvider = Provider.of<OrderProvider>(context, listen: false);
+    // Now you can safely access Provider here
+    orderProvider.addListener(_handleScanUpdate);
   }
 
   Future<void> _startContinuousScanning() async {
-    final orderProvider = Provider.of<OrderProvider>(context, listen: false);
-    try {
-      setState(() => _isScanning = true);
-      await orderProvider.startScanning();
-
-      orderProvider.addListener(_handleScanUpdate);
-    } catch (e) {
-      setState(() => _isScanning = false);
-      AppAlerts.appToast(message: 'Failed to start scanner: ${e.toString()}');
+    // Ensure widget is mounted before accessing Provider
+    if (mounted) {
+      final orderProvider = Provider.of<OrderProvider>(context, listen: false);
+      try {
+        setState(() => _isScanning = true);
+        await orderProvider.startScanning();
+        orderProvider.addListener(_handleScanUpdate);
+      } catch (e) {
+        if (mounted) {
+          setState(() => _isScanning = false);
+        }
+        AppAlerts.appToast(message: 'Failed to start scanner: ${e.toString()}');
+      }
     }
   }
 
   Future<void> _stopContinuousScanning() async {
     final orderProvider = Provider.of<OrderProvider>(context, listen: false);
     orderProvider.removeListener(_handleScanUpdate);
-    await orderProvider.stopScanner();
-    setState(() => _isScanning = false);
+    try {
+      await orderProvider.stopScanner();
+    } catch (e) {
+      debugPrint("Error stopping scanner: $e");
+    }
+    if (mounted) {
+      setState(() => _isScanning = false);
+    }
   }
 
   void _handleScanUpdate() {
+    if (!mounted) return;
+
     final orderProvider = Provider.of<OrderProvider>(context, listen: false);
-    if (orderProvider.scannedBarcode != null && orderProvider.scannedBarcode!.isNotEmpty) {
+    if (orderProvider.scannedBarcode != null &&
+        orderProvider.scannedBarcode!.isNotEmpty) {
       _handleScannedBarcode(context, orderProvider.scannedBarcode!);
       orderProvider.clearScannedBarcode();
     }
@@ -96,7 +94,9 @@ class _AddLotScreenState extends State<AddLotScreen> {
     try {
       await _addSerial(context, barcode);
     } catch (e) {
-      AppAlerts.appToast(message: 'Error handling barcode: ${e.toString()}');
+      if (mounted) {
+        AppAlerts.appToast(message: 'Error handling barcode: ${e.toString()}');
+      }
     }
   }
 
@@ -108,9 +108,13 @@ class _AddLotScreenState extends State<AddLotScreen> {
         itemCode: widget.itemCode,
         serialNo: serialNo,
       );
-      _serialController.clear();
+      if (mounted) {
+        _serialController.clear();
+      }
     } catch (e) {
-      AppAlerts.appToast(message: e.toString());
+      if (mounted) {
+        AppAlerts.appToast(message: e.toString());
+      }
     }
   }
 
@@ -123,11 +127,14 @@ class _AddLotScreenState extends State<AddLotScreen> {
         serialNo: serialNo,
       );
     } catch (e) {
-      AppAlerts.appToast(message: e.toString());
+      if (mounted) {
+        AppAlerts.appToast(message: e.toString());
+      }
     }
   }
 
   void _startEditingSerial(String serialNo) {
+    if (!mounted) return;
     setState(() {
       _editingSerialNo = serialNo;
       _editSerialController.text = serialNo;
@@ -135,6 +142,7 @@ class _AddLotScreenState extends State<AddLotScreen> {
   }
 
   void _cancelEditing() {
+    if (!mounted) return;
     setState(() {
       _editingSerialNo = null;
       _editSerialController.clear();
@@ -142,7 +150,9 @@ class _AddLotScreenState extends State<AddLotScreen> {
   }
 
   void _saveEditedSerial() {
-    if (_editingSerialNo == null || _editSerialController.text.isEmpty) return;
+    if (!mounted ||
+        _editingSerialNo == null ||
+        _editSerialController.text.isEmpty) return;
 
     final orderProvider = Provider.of<OrderProvider>(context, listen: false);
     try {
@@ -160,12 +170,16 @@ class _AddLotScreenState extends State<AddLotScreen> {
         serialNo: _editSerialController.text,
       );
 
-      setState(() {
-        _editingSerialNo = null;
-        _editSerialController.clear();
-      });
+      if (mounted) {
+        setState(() {
+          _editingSerialNo = null;
+          _editSerialController.clear();
+        });
+      }
     } catch (e) {
-      AppAlerts.appToast(message: 'Failed to update serial: ${e.toString()}');
+      if (mounted) {
+        AppAlerts.appToast(message: 'Failed to update serial: ${e.toString()}');
+      }
     }
   }
 
@@ -174,213 +188,262 @@ class _AddLotScreenState extends State<AddLotScreen> {
     final orderProvider = Provider.of<OrderProvider>(context);
     final order = orderProvider.getSalesOrderById(widget.soNumber);
     final item = order?.items.firstWhere(
-          (i) => i.itemCode == widget.itemCode,
+      (i) => i.itemCode == widget.itemCode,
       orElse: () => throw Exception('Item not found'),
     );
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Scan Serial Numbers'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.done),
-            onPressed: () => Navigator.of(context).pop(),
-            tooltip: 'Done',
-          ),
-        ],
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Item information section
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Item Details',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 18,
+    return PopScope(
+      canPop: false,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Scan Serial Numbers'),
+          leading: IconButton(
+              onPressed: () async {
+                _stopContinuousScanning();
+                Navigator.of(context).pop();
+              },
+              icon: Icon(Icons.arrow_back_ios)),
+          actions: [
+            TextButton(
+              onPressed: () async {
+                _stopContinuousScanning();
+                Navigator.of(context).pop();
+              },
+              child: const Text("Done"),
+            ),
+          ],
+        ),
+        body: SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Item information section
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Item Details',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 18,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 8),
-                    InkWell(
-                      onTap: () {
-                        setState(() {
-                          _isExpanded = !_isExpanded;
-                        });
-                      },
-                      child: Column(
+                      const SizedBox(height: 8),
+                      InkWell(
+                        onTap: () {
+                          if (mounted) {
+                            setState(() {
+                              _isExpanded = !_isExpanded;
+                            });
+                          }
+                        },
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              item?.itemName ?? '',
+                              maxLines: _isExpanded ? null : 2,
+                              overflow: _isExpanded
+                                  ? TextOverflow.clip
+                                  : TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 16,
+                              ),
+                            ),
+                            if (!_isExpanded &&
+                                (item?.itemName.length ?? 0) > 50)
+                              const Text(
+                                'View more',
+                                style: TextStyle(
+                                  color: Colors.blue,
+                                  fontSize: 12,
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          const Text('Item Code: ',
+                              style: TextStyle(fontWeight: FontWeight.bold)),
+                          Text(item?.itemCode ?? ''),
+                        ],
+                      ),
+                      Row(
+                        children: [
+                          const Text('Ordered Qty: ',
+                              style: TextStyle(fontWeight: FontWeight.bold)),
+                          Text('${widget.orderedQty}'),
+                        ],
+                      ),
+                      Row(
+                        children: [
+                          const Text('Available Stock: ',
+                              style: TextStyle(fontWeight: FontWeight.bold)),
+                          Text('${widget.availableStock}'),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 20),
+
+              // Scanner status indicator with Lottie animation
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Row(
+                    children: [
+                      SizedBox(
+                        width: 50,
+                        height: 50,
+                        child: Lottie.asset(
+                          'assets/animated_icon/scanner.json',
+                          animate: _isScanning,
+                          repeat: _isScanning,
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            item?.itemName ?? '',
-                            maxLines: _isExpanded ? null : 2,
-                            overflow: _isExpanded ? TextOverflow.clip : TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontSize: 16,
+                            _isScanning
+                                ? 'Scanner is active'
+                                : 'Scanner is ready',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: _isScanning ? Colors.green : Colors.grey,
                             ),
                           ),
-                          if (!_isExpanded && (item?.itemName.length ?? 0) > 50)
-                            const Text(
-                              'View more',
-                              style: TextStyle(
-                                color: Colors.blue,
-                                fontSize: 12,
-                              ),
-                            ),
+                          Text(
+                            _isScanning
+                                ? 'Scanning for serial numbers...'
+                                : 'Tap to scan',
+                            style: const TextStyle(fontSize: 12),
+                          ),
                         ],
                       ),
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        const Text('Item Code: ', style: TextStyle(fontWeight: FontWeight.bold)),
-                        Text(item?.itemCode ?? ''),
-                      ],
-                    ),
-                    Row(
-                      children: [
-                        const Text('Ordered Qty: ', style: TextStyle(fontWeight: FontWeight.bold)),
-                        Text('${widget.orderedQty}'),
-                      ],
-                    ),
-                    Row(
-                      children: [
-                        const Text('Available Stock: ', style: TextStyle(fontWeight: FontWeight.bold)),
-                        Text('${widget.availableStock}'),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 20),
-
-            // Scanner status indicator
-            Row(
-              children: [
-                Icon(
-                  Icons.qr_code_scanner,
-                  color: _isScanning ? Colors.green : Colors.grey,
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  _isScanning ? 'Scanner active' : 'Scanner inactive',
-                  style: TextStyle(
-                    color: _isScanning ? Colors.green : Colors.grey,
+                    ],
                   ),
                 ),
-              ],
-            ),
-
-            const SizedBox(height: 20),
-
-            // Manual entry section
-            const Text(
-              'Manual Entry',
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 16,
               ),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _serialController,
-              decoration: InputDecoration(
-                labelText: 'Serial Number',
-                border: const OutlineInputBorder(),
-                suffixIcon: IconButton(
-                  icon: const Icon(Icons.add),
-                  onPressed: () {
-                    if (_serialController.text.isNotEmpty) {
-                      _addSerial(context, _serialController.text);
-                    }
-                  },
-                ),
-              ),
-              onSubmitted: (value) => _addSerial(context, value),
-            ),
 
-            const SizedBox(height: 20),
+              const SizedBox(height: 20),
 
-            // Scanned serials list
-            if (item!.serials.isNotEmpty) ...[
+              // Manual entry section
               const Text(
-                'Scanned Serials',
+                'Manual Entry',
                 style: TextStyle(
                   fontWeight: FontWeight.bold,
                   fontSize: 16,
                 ),
               ),
               const SizedBox(height: 8),
-              ListView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: item.serials.length,
-                itemBuilder: (context, index) {
-                  final serial = item.serials[index];
-                  if (_editingSerialNo == serial.serialNo) {
-                    return Card(
-                      child: Padding(
-                        padding: const EdgeInsets.all(8.0),
-                        child: Column(
-                          children: [
-                            TextField(
-                              controller: _editSerialController,
-                              decoration: InputDecoration(
-                                labelText: 'Edit Serial',
-                                border: const OutlineInputBorder(),
-                                suffixIcon: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    IconButton(
-                                      icon: const Icon(Icons.check, color: Colors.green),
-                                      onPressed: _saveEditedSerial,
-                                    ),
-                                    IconButton(
-                                      icon: const Icon(Icons.close, color: Colors.red),
-                                      onPressed: _cancelEditing,
-                                    ),
-                                  ],
+              TextField(
+                controller: _serialController,
+                decoration: InputDecoration(
+                  labelText: 'Serial Number',
+                  border: const OutlineInputBorder(),
+                  suffixIcon: IconButton(
+                    icon: const Icon(Icons.add),
+                    onPressed: () {
+                      if (_serialController.text.isNotEmpty) {
+                        _addSerial(context, _serialController.text);
+                      }
+                    },
+                  ),
+                ),
+                onSubmitted: (value) => _addSerial(context, value),
+              ),
+
+              const SizedBox(height: 20),
+
+              // Scanned serials list
+              if (item!.serials.isNotEmpty) ...[
+                const Text(
+                  'Scanned Serials',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                ListView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: item.serials.length,
+                  itemBuilder: (context, index) {
+                    final serial = item.serials[index];
+                    if (_editingSerialNo == serial.serialNo) {
+                      return Card(
+                        child: Padding(
+                          padding: const EdgeInsets.all(8.0),
+                          child: Column(
+                            children: [
+                              TextField(
+                                controller: _editSerialController,
+                                decoration: InputDecoration(
+                                  labelText: 'Edit Serial',
+                                  border: const OutlineInputBorder(),
+                                  suffixIcon: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      IconButton(
+                                        icon: const Icon(Icons.check,
+                                            color: Colors.green),
+                                        onPressed: _saveEditedSerial,
+                                      ),
+                                      IconButton(
+                                        icon: const Icon(Icons.close,
+                                            color: Colors.red),
+                                        onPressed: _cancelEditing,
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
-                      ),
-                    );
-                  } else {
-                    return Card(
-                      child: ListTile(
-                        leading: Text('${index + 1}.'),
-                        title: Text(serial.serialNo),
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            IconButton(
-                              icon: const Icon(Icons.edit, color: Colors.blue),
-                              onPressed: () => _startEditingSerial(serial.serialNo),
-                            ),
-                            IconButton(
-                              icon: const Icon(Icons.delete, color: Colors.red),
-                              onPressed: () => _removeSerial(context, serial.serialNo),
-                            ),
-                          ],
+                      );
+                    } else {
+                      return Card(
+                        child: ListTile(
+                          leading: Text('${index + 1}.'),
+                          title: Text(serial.serialNo),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                icon:
+                                    const Icon(Icons.edit, color: Colors.blue),
+                                onPressed: () =>
+                                    _startEditingSerial(serial.serialNo),
+                              ),
+                              IconButton(
+                                icon:
+                                    const Icon(Icons.delete, color: Colors.red),
+                                onPressed: () =>
+                                    _removeSerial(context, serial.serialNo),
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
-                    );
-                  }
-                },
-              ),
+                      );
+                    }
+                  },
+                ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );
@@ -416,41 +479,59 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _startContinuousScanning();
+      if (mounted) {
+        _startContinuousScanning();
+      }
     });
   }
 
   @override
-  void dispose() {
-    _stopContinuousScanning();
-    _serialController.dispose();
-    _editSerialController.dispose();
-    super.dispose();
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final orderProvider = Provider.of<OrderProvider>(context, listen: false);
+    // Now you can safely access Provider here
+    orderProvider.addListener(_handleScanUpdate);
   }
 
   Future<void> _startContinuousScanning() async {
-    final orderProvider = Provider.of<PurchaseOrderProvider>(context, listen: false);
-    try {
-      setState(() => _isScanning = true);
-      await orderProvider.startScanning();
-
-      orderProvider.addListener(_handleScanUpdate);
-    } catch (e) {
-      setState(() => _isScanning = false);
-      AppAlerts.appToast(message: 'Failed to start scanner: ${e.toString()}');
+    // Ensure widget is mounted before accessing Provider
+    if (mounted) {
+      final orderProvider =
+          Provider.of<PurchaseOrderProvider>(context, listen: false);
+      try {
+        setState(() => _isScanning = true);
+        await orderProvider.startScanning();
+        orderProvider.addListener(_handleScanUpdate);
+      } catch (e) {
+        if (mounted) {
+          setState(() => _isScanning = false);
+        }
+        AppAlerts.appToast(message: 'Failed to start scanner: ${e.toString()}');
+      }
     }
   }
 
   Future<void> _stopContinuousScanning() async {
-    final orderProvider = Provider.of<PurchaseOrderProvider>(context, listen: false);
+    final orderProvider =
+        Provider.of<PurchaseOrderProvider>(context, listen: false);
     orderProvider.removeListener(_handleScanUpdate);
-    await orderProvider.stopScanner();
-    setState(() => _isScanning = false);
+    try {
+      await orderProvider.stopScanner();
+    } catch (e) {
+      debugPrint("Error stopping scanner: $e");
+    }
+    if (mounted) {
+      setState(() => _isScanning = false);
+    }
   }
 
   void _handleScanUpdate() {
-    final orderProvider = Provider.of<PurchaseOrderProvider>(context, listen: false);
-    if (orderProvider.scannedBarcode != null && orderProvider.scannedBarcode!.isNotEmpty) {
+    if (!mounted) return;
+
+    final orderProvider =
+        Provider.of<PurchaseOrderProvider>(context, listen: false);
+    if (orderProvider.scannedBarcode != null &&
+        orderProvider.scannedBarcode!.isNotEmpty) {
       _handleScannedBarcode(context, orderProvider.scannedBarcode!);
       orderProvider.clearScannedBarcode();
     }
@@ -460,26 +541,34 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
     try {
       await _addSerial(context, barcode);
     } catch (e) {
-      AppAlerts.appToast(message: 'Error handling barcode: ${e.toString()}');
+      if (mounted) {
+        AppAlerts.appToast(message: 'Error handling barcode: ${e.toString()}');
+      }
     }
   }
 
   Future<void> _addSerial(BuildContext context, String serialNo) async {
-    final orderProvider = Provider.of<PurchaseOrderProvider>(context, listen: false);
+    final orderProvider =
+        Provider.of<PurchaseOrderProvider>(context, listen: false);
     try {
       await orderProvider.addSerialToItem(
         poNumber: widget.poNumber,
         itemCode: widget.itemCode,
         serialNo: serialNo,
       );
-      _serialController.clear();
+      if (mounted) {
+        _serialController.clear();
+      }
     } catch (e) {
-      AppAlerts.appToast(message: e.toString());
+      if (mounted) {
+        AppAlerts.appToast(message: e.toString());
+      }
     }
   }
 
   void _removeSerial(BuildContext context, String serialNo) {
-    final orderProvider = Provider.of<PurchaseOrderProvider>(context, listen: false);
+    final orderProvider =
+        Provider.of<PurchaseOrderProvider>(context, listen: false);
     try {
       orderProvider.removeSerialFromItem(
         poNumber: widget.poNumber,
@@ -487,11 +576,14 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
         serialNo: serialNo,
       );
     } catch (e) {
-      AppAlerts.appToast(message: e.toString());
+      if (mounted) {
+        AppAlerts.appToast(message: e.toString());
+      }
     }
   }
 
   void _startEditingSerial(String serialNo) {
+    if (!mounted) return;
     setState(() {
       _editingSerialNo = serialNo;
       _editSerialController.text = serialNo;
@@ -499,6 +591,7 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
   }
 
   void _cancelEditing() {
+    if (!mounted) return;
     setState(() {
       _editingSerialNo = null;
       _editSerialController.clear();
@@ -506,9 +599,12 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
   }
 
   void _saveEditedSerial() {
-    if (_editingSerialNo == null || _editSerialController.text.isEmpty) return;
+    if (!mounted ||
+        _editingSerialNo == null ||
+        _editSerialController.text.isEmpty) return;
 
-    final orderProvider = Provider.of<PurchaseOrderProvider>(context, listen: false);
+    final orderProvider =
+        Provider.of<PurchaseOrderProvider>(context, listen: false);
     try {
       // First remove the old serial
       orderProvider.removeSerialFromItem(
@@ -524,12 +620,16 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
         serialNo: _editSerialController.text,
       );
 
-      setState(() {
-        _editingSerialNo = null;
-        _editSerialController.clear();
-      });
+      if (mounted) {
+        setState(() {
+          _editingSerialNo = null;
+          _editSerialController.clear();
+        });
+      }
     } catch (e) {
-      AppAlerts.appToast(message: 'Failed to update serial: ${e.toString()}');
+      if (mounted) {
+        AppAlerts.appToast(message: 'Failed to update serial: ${e.toString()}');
+      }
     }
   }
 
@@ -538,17 +638,26 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
     final orderProvider = Provider.of<PurchaseOrderProvider>(context);
     final order = orderProvider.getPurchaseOrderById(widget.poNumber);
     final item = order?.items.firstWhere(
-          (i) => i.itemCode == widget.itemCode,
+      (i) => i.itemCode == widget.itemCode,
       orElse: () => throw Exception('Item not found'),
     );
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Scan Serial Numbers'),
+        leading: IconButton(
+            onPressed: () async {
+              _stopContinuousScanning();
+              Navigator.of(context).pop();
+            },
+            icon: Icon(Icons.arrow_back_ios)),
         actions: [
           IconButton(
             icon: const Icon(Icons.done),
-            onPressed: () => Navigator.of(context).pop(),
+            onPressed: () async {
+              _stopContinuousScanning();
+              Navigator.of(context).pop();
+            },
             tooltip: 'Done',
           ),
         ],
@@ -575,9 +684,11 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
                     const SizedBox(height: 8),
                     InkWell(
                       onTap: () {
-                        setState(() {
-                          _isExpanded = !_isExpanded;
-                        });
+                        if (mounted) {
+                          setState(() {
+                            _isExpanded = !_isExpanded;
+                          });
+                        }
                       },
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -585,7 +696,9 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
                           Text(
                             item?.itemName ?? '',
                             maxLines: _isExpanded ? null : 2,
-                            overflow: _isExpanded ? TextOverflow.clip : TextOverflow.ellipsis,
+                            overflow: _isExpanded
+                                ? TextOverflow.clip
+                                : TextOverflow.ellipsis,
                             style: const TextStyle(
                               fontSize: 16,
                             ),
@@ -604,19 +717,22 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
                     const SizedBox(height: 8),
                     Row(
                       children: [
-                        const Text('Item Code: ', style: TextStyle(fontWeight: FontWeight.bold)),
+                        const Text('Item Code: ',
+                            style: TextStyle(fontWeight: FontWeight.bold)),
                         Text(item?.itemCode ?? ''),
                       ],
                     ),
                     Row(
                       children: [
-                        const Text('Ordered Qty: ', style: TextStyle(fontWeight: FontWeight.bold)),
+                        const Text('Ordered Qty: ',
+                            style: TextStyle(fontWeight: FontWeight.bold)),
                         Text('${widget.orderedQty}'),
                       ],
                     ),
                     Row(
                       children: [
-                        const Text('Available Stock: ', style: TextStyle(fontWeight: FontWeight.bold)),
+                        const Text('Available Stock: ',
+                            style: TextStyle(fontWeight: FontWeight.bold)),
                         Text('${widget.availableStock}'),
                       ],
                     ),
@@ -627,21 +743,45 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
 
             const SizedBox(height: 20),
 
-            // Scanner status indicator
-            Row(
-              children: [
-                Icon(
-                  Icons.qr_code_scanner,
-                  color: _isScanning ? Colors.green : Colors.grey,
+            // Scanner status indicator with Lottie animation
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: 50,
+                      height: 50,
+                      child: Lottie.asset(
+                        'assets/animate_icon/scanner.json',
+                        animate: _isScanning,
+                        repeat: _isScanning,
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _isScanning
+                              ? 'Scanner is active'
+                              : 'Scanner is ready',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: _isScanning ? Colors.green : Colors.grey,
+                          ),
+                        ),
+                        Text(
+                          _isScanning
+                              ? 'Scanning for serial numbers...'
+                              : 'Tap to scan',
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 8),
-                Text(
-                  _isScanning ? 'Scanner active' : 'Scanner inactive',
-                  style: TextStyle(
-                    color: _isScanning ? Colors.green : Colors.grey,
-                  ),
-                ),
-              ],
+              ),
             ),
 
             const SizedBox(height: 20),
@@ -705,11 +845,13 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
                                     IconButton(
-                                      icon: const Icon(Icons.check, color: Colors.green),
+                                      icon: const Icon(Icons.check,
+                                          color: Colors.green),
                                       onPressed: _saveEditedSerial,
                                     ),
                                     IconButton(
-                                      icon: const Icon(Icons.close, color: Colors.red),
+                                      icon: const Icon(Icons.close,
+                                          color: Colors.red),
                                       onPressed: _cancelEditing,
                                     ),
                                   ],
@@ -730,11 +872,13 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
                           children: [
                             IconButton(
                               icon: const Icon(Icons.edit, color: Colors.blue),
-                              onPressed: () => _startEditingSerial(serial.serialNo),
+                              onPressed: () =>
+                                  _startEditingSerial(serial.serialNo),
                             ),
                             IconButton(
                               icon: const Icon(Icons.delete, color: Colors.red),
-                              onPressed: () => _removeSerial(context, serial.serialNo),
+                              onPressed: () =>
+                                  _removeSerial(context, serial.serialNo),
                             ),
                           ],
                         ),
