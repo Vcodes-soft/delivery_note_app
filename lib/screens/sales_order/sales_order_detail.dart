@@ -164,7 +164,7 @@ class _SalesOrderDetailScreenState extends State<SalesOrderDetailScreen> {
               onAddLotPressed: item.serialYN
                   ? () => showDialog(
                 context: context,
-                builder: (context) => AddLotDialog(
+                builder: (context) => AddLotScreen(
                   soNumber: order.soNumber,
                   itemCode: item.itemCode,
                   orderedQty: item.qtyOrdered,

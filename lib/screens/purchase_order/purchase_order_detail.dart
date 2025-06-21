@@ -162,7 +162,7 @@ class _PurchaseOrderDetailScreenState extends State<PurchaseOrderDetailScreen> {
               onAddLotPressed: item.serialYN
                   ? () => showDialog(
                 context: context,
-                builder: (context) => POAddLotDialog(
+                builder: (context) => POAddLotScreen(
                   poNumber: order.poNumber,
                   itemCode: item.itemCode,
                   orderedQty: item.qtyOrdered,

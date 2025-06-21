@@ -41,6 +41,7 @@ dependencies:
   fluttertoast:
   flutter_datawedge: ^3.1.0
   intl:
+  lottie:
 
 dev_dependencies:
   flutter_test:
@@ -67,6 +68,7 @@ flutter:
   # To add assets to your application, add an assets section, like this:
   assets:
     - assets/logo/
+    - assets/animated_icon/
     - assets/bg/
     - assets/
 
