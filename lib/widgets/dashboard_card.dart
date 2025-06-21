@@ -34,7 +34,7 @@ class DashboardCard extends StatelessWidget {
             // Background image
             Image.asset(
               image,
-              fit: BoxFit.cover,
+              fit: BoxFit.contain,
             ),
 
             // Dark overlay for better text visibility
@@ -44,7 +44,7 @@ class DashboardCard extends StatelessWidget {
                   begin: Alignment.bottomCenter,
                   end: Alignment.topCenter,
                   colors: [
-                    Colors.black.withOpacity(0.7),
+                    Colors.black.withOpacity(0.5),
                     Colors.transparent,
                   ],
                 ),
@@ -58,12 +58,12 @@ class DashboardCard extends StatelessWidget {
                 builder: (context, constraints) {
                   final iconSize = constraints.maxHeight * 0.3;
                   final valueFontSize = constraints.maxHeight * 0.2;
-                  final titleFontSize = constraints.maxHeight * 0.12;
+                  final titleFontSize = constraints.maxHeight * 0.14;
 
                   return Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
+                    mainAxisAlignment: MainAxisAlignment.end,
                     children: [
-                      Icon(icon, size: iconSize, color: Colors.white),
+                      // Icon(icon, size: iconSize, color: Colors.white),
                       const SizedBox(height: 8),
                       FittedBox(
                         fit: BoxFit.scaleDown,
@@ -84,6 +84,7 @@ class DashboardCard extends StatelessWidget {
                           style: Theme.of(context).textTheme.titleMedium?.copyWith(
                             fontSize: titleFontSize,
                             color: Colors.white,
+                            fontWeight: FontWeight.bold
                           ),
                           textAlign: TextAlign.center,
                         ),
