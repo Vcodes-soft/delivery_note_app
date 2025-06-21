@@ -37,7 +37,8 @@ class DashboardScreen extends StatelessWidget {
             value: "",
             icon: Icons.shopping_cart,
             color: Colors.blue,
-            onTap: () => Navigator.of(context).pushNamed('/sales-orders'), image: ,
+            onTap: () => Navigator.of(context).pushNamed('/sales-orders'),
+            image: "assets/bg/sales_order.jpeg",
           ),
           DashboardCard(
             title: 'Purchase Orders',
@@ -45,6 +46,7 @@ class DashboardScreen extends StatelessWidget {
             icon: Icons.inventory,
             color: Colors.green,
             onTap: () => Navigator.of(context).pushNamed('/purchase-orders'),
+            image: 'assets/bg/purchase_order.jpeg',
           ),
         ],
       ),
