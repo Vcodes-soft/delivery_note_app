@@ -399,23 +399,33 @@ class PurchaseOrderProvider with ChangeNotifier {
 
   Future<String> getNextGrnNumber() async {
     final query = '''
-  SELECT GrnNumber 
-  FROM GrnHeader 
-  WHERE GrnNumber LIKE 'AGRN%'
-  ORDER BY GrnNumber
+    SELECT GrnNumber 
+    FROM GrnHeader 
+    WHERE GrnNumber LIKE 'AGRN%'
   ''';
+
     final result = await _sqlConnection.getData(query);
     final resultJson = jsonDecode(result);
+
     if (resultJson.isEmpty) {
       return 'AGRN00001';
     } else {
-      final lastGrn = resultJson[0]['GrnNumber'];
-      final lastNumber = int.parse(lastGrn.replaceAll('AGRN', ''));
-      final nextNumber = lastNumber + 1;
+      // Extract all GRN numbers and parse their numeric parts
+      final grnNumbers = resultJson.map<String>((item) => item['GrnNumber'] as String).toList();
+
+      // Find the maximum number
+      int maxNumber = 0;
+      for (final grn in grnNumbers) {
+        final number = int.tryParse(grn.replaceAll('AGRN', '')) ?? 0;
+        if (number > maxNumber) {
+          maxNumber = number;
+        }
+      }
+
+      final nextNumber = maxNumber + 1;
       return 'AGRN${nextNumber.toString().padLeft(5, '0')}';
     }
   }
-
   PurchaseOrder? getPurchaseOrderById(String poNumber) {
     try {
       return _purchaseOrders.firstWhere((order) => order.poNumber == poNumber);

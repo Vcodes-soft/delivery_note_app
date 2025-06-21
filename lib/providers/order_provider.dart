@@ -400,23 +400,33 @@ class OrderProvider with ChangeNotifier {
 
   Future<String> _getNextDnNumber() async {
     final query = '''
-  SELECT DnNumber 
-  FROM DNoteHeader 
-  WHERE DnNumber LIKE 'ADN%' 
-  ORDER BY DnNumber 
+    SELECT DnNumber 
+    FROM DNoteHeader 
+    WHERE DnNumber LIKE 'ADN%'
   ''';
+
     final result = await _sqlConnection.getData(query);
     final resultJson = jsonDecode(result);
+
     if (resultJson.isEmpty) {
-      return 'ADN00001';
+      return 'ADN000001';
     } else {
-      final lastDn = resultJson[0]['DnNumber'] as String;
-      final lastNumber = int.parse(lastDn.replaceAll('ADN', ''));
-      final nextNumber = lastNumber + 1;
+      // Extract all DN numbers and parse their numeric parts
+      final dnNumbers = resultJson.map<String>((item) => item['DnNumber'] as String).toList();
+
+      // Find the maximum number
+      int maxNumber = 0;
+      for (final dn in dnNumbers) {
+        final number = int.tryParse(dn.replaceAll('ADN', '')) ?? 0;
+        if (number > maxNumber) {
+          maxNumber = number;
+        }
+      }
+
+      final nextNumber = maxNumber + 1;
       return 'ADN${nextNumber.toString().padLeft(6, '0')}';
     }
   }
-
   FlutterDataWedge? dataWedge;
   StreamSubscription? _scanSubscription;
   String _errorMessage = '';
