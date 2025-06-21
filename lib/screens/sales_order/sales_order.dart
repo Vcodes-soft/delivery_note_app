@@ -19,7 +19,9 @@ class _SalesOrdersScreenState extends State<SalesOrdersScreen> {
   @override
   void initState() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      Provider.of<OrderProvider>(context, listen: false).initializeScanner();
       Provider.of<OrderProvider>(context, listen: false).fetchSalesOrders();
+
     });
     super.initState();
   }
