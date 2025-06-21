@@ -37,7 +37,7 @@ class DashboardScreen extends StatelessWidget {
             value: "",
             icon: Icons.shopping_cart,
             color: Colors.blue,
-            onTap: () => Navigator.of(context).pushNamed('/sales-orders'),
+            onTap: () => Navigator.of(context).pushNamed('/sales-orders'), image: ,
           ),
           DashboardCard(
             title: 'Purchase Orders',

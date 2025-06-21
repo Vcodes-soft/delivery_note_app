@@ -403,7 +403,7 @@ class OrderProvider with ChangeNotifier {
   SELECT DnNumber 
   FROM DNoteHeader 
   WHERE DnNumber LIKE 'ADN%' 
-  ORDER BY DnNumber DESC 
+  ORDER BY DnNumber 
   ''';
     final result = await _sqlConnection.getData(query);
     final resultJson = jsonDecode(result);

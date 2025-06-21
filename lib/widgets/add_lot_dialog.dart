@@ -37,19 +37,53 @@ class AddLotDialog extends StatefulWidget {
 class _AddLotDialogState extends State<AddLotDialog> {
   final TextEditingController _serialController = TextEditingController();
   bool _isScanning = false;
+  bool _isExpanded = false;
 
   @override
   Widget build(BuildContext context) {
     final orderProvider = Provider.of<OrderProvider>(context);
     final order = orderProvider.getSalesOrderById(widget.soNumber);
     final item = order?.items.firstWhere(
-      (i) => i.itemCode == widget.itemCode,
+          (i) => i.itemCode == widget.itemCode,
       orElse: () => throw Exception('Item not found'),
     );
 
     return AlertDialog(
-
-      title: Text('Scan Serial for ${item?.itemName}'),
+      title: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Scan Serial for'),
+          InkWell(
+            onTap: () {
+              setState(() {
+                _isExpanded = !_isExpanded;
+              });
+            },
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  item?.itemName ?? '',
+                  maxLines: _isExpanded ? null : 2,
+                  overflow: _isExpanded ? TextOverflow.clip : TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
+                if (!_isExpanded && (item?.itemName.length ?? 0) > 50)
+                  const Text(
+                    'View more',
+                    style: TextStyle(
+                      color: Colors.blue,
+                      fontSize: 12,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -58,13 +92,13 @@ class _AddLotDialogState extends State<AddLotDialog> {
             ElevatedButton.icon(
               icon: _isScanning
                   ? const SizedBox(
-                      width: 24,
-                      height: 24,
-                      child: CircularProgressIndicator(
-                        color: Colors.white,
-                        strokeWidth: 2,
-                      ),
-                    )
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(
+                  color: Colors.white,
+                  strokeWidth: 2,
+                ),
+              )
                   : const Icon(Icons.qr_code_scanner),
               label: Text(_isScanning ? 'Scanning...' : 'Scan Serial Number'),
               onPressed: _isScanning ? null : () => _scanSerial(context),
@@ -86,13 +120,13 @@ class _AddLotDialogState extends State<AddLotDialog> {
                   style: TextStyle(fontWeight: FontWeight.bold)),
               const SizedBox(height: 8),
               ...item.serials.map((serial) => ListTile(
-                    leading: Text('${serial.sNo}.'),
-                    title: Text(serial.serialNo),
-                    trailing: IconButton(
-                      icon: const Icon(Icons.delete, color: Colors.red),
-                      onPressed: () => _removeSerial(context, serial.serialNo),
-                    ),
-                  )),
+                leading: Text('${serial.sNo}.'),
+                title: Text(serial.serialNo),
+                trailing: IconButton(
+                  icon: const Icon(Icons.delete, color: Colors.red),
+                  onPressed: () => _removeSerial(context, serial.serialNo),
+                ),
+              )),
             ],
           ],
         ),
@@ -170,14 +204,10 @@ class _AddLotDialogState extends State<AddLotDialog> {
 
   @override
   void dispose() {
-    // Stop scanning when dialog is disposed
-    // Provider.of<OrderProvider>(context, listen: false).stopScanner();
     _serialController.dispose();
     super.dispose();
   }
 }
-
-///------------------------PO-------------------
 
 class POAddLotDialog extends StatefulWidget {
   final String poNumber;
@@ -200,18 +230,53 @@ class POAddLotDialog extends StatefulWidget {
 class _POAddLotDialogState extends State<POAddLotDialog> {
   final TextEditingController _serialController = TextEditingController();
   bool _isScanning = false;
+  bool _isExpanded = false;
 
   @override
   Widget build(BuildContext context) {
     final orderProvider = Provider.of<PurchaseOrderProvider>(context);
     final order = orderProvider.getPurchaseOrderById(widget.poNumber);
     final item = order?.items.firstWhere(
-      (i) => i.itemCode == widget.itemCode,
+          (i) => i.itemCode == widget.itemCode,
       orElse: () => throw Exception('Item not found'),
     );
 
     return AlertDialog(
-      title: Text('Scan Serial for ${item?.itemName}'),
+      title: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Scan Serial for'),
+          InkWell(
+            onTap: () {
+              setState(() {
+                _isExpanded = !_isExpanded;
+              });
+            },
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  item?.itemName ?? '',
+                  maxLines: _isExpanded ? null : 2,
+                  overflow: _isExpanded ? TextOverflow.clip : TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
+                if (!_isExpanded && (item?.itemName.length ?? 0) > 50)
+                  const Text(
+                    'View more',
+                    style: TextStyle(
+                      color: Colors.blue,
+                      fontSize: 12,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -220,13 +285,13 @@ class _POAddLotDialogState extends State<POAddLotDialog> {
             ElevatedButton.icon(
               icon: _isScanning
                   ? const SizedBox(
-                      width: 24,
-                      height: 24,
-                      child: CircularProgressIndicator(
-                        color: Colors.white,
-                        strokeWidth: 2,
-                      ),
-                    )
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(
+                  color: Colors.white,
+                  strokeWidth: 2,
+                ),
+              )
                   : const Icon(Icons.qr_code_scanner),
               label: Text(_isScanning ? 'Scanning...' : 'Scan Serial Number'),
               onPressed: _isScanning ? null : () => _scanSerial(context),
@@ -248,13 +313,13 @@ class _POAddLotDialogState extends State<POAddLotDialog> {
                   style: TextStyle(fontWeight: FontWeight.bold)),
               const SizedBox(height: 8),
               ...item.serials.map((serial) => ListTile(
-                    leading: Text('${serial.sNo}.'),
-                    title: Text(serial.serialNo),
-                    trailing: IconButton(
-                      icon: const Icon(Icons.delete, color: Colors.red),
-                      onPressed: () => _removeSerial(context, serial.serialNo),
-                    ),
-                  )),
+                leading: Text('${serial.sNo}.'),
+                title: Text(serial.serialNo),
+                trailing: IconButton(
+                  icon: const Icon(Icons.delete, color: Colors.red),
+                  onPressed: () => _removeSerial(context, serial.serialNo),
+                ),
+              )),
             ],
           ],
         ),
@@ -270,7 +335,7 @@ class _POAddLotDialogState extends State<POAddLotDialog> {
 
   Future<void> _scanSerial(BuildContext context) async {
     final orderProvider =
-        Provider.of<PurchaseOrderProvider>(context, listen: false);
+    Provider.of<PurchaseOrderProvider>(context, listen: false);
 
     try {
       setState(() => _isScanning = true);
@@ -304,7 +369,7 @@ class _POAddLotDialogState extends State<POAddLotDialog> {
 
   Future<void> _addSerial(BuildContext context, String serialNo) async {
     final orderProvider =
-        Provider.of<PurchaseOrderProvider>(context, listen: false);
+    Provider.of<PurchaseOrderProvider>(context, listen: false);
     try {
       await orderProvider.addSerialToItem(
         poNumber: widget.poNumber,
@@ -319,7 +384,7 @@ class _POAddLotDialogState extends State<POAddLotDialog> {
 
   void _removeSerial(BuildContext context, String serialNo) {
     final orderProvider =
-        Provider.of<PurchaseOrderProvider>(context, listen: false);
+    Provider.of<PurchaseOrderProvider>(context, listen: false);
     try {
       orderProvider.removeSerialFromItem(
         poNumber: widget.poNumber,
@@ -333,8 +398,6 @@ class _POAddLotDialogState extends State<POAddLotDialog> {
 
   @override
   void dispose() {
-    // Stop scanning when dialog is disposed
-
     _serialController.dispose();
     super.dispose();
   }

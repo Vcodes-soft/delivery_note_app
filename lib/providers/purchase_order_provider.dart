@@ -125,8 +125,6 @@ class PurchaseOrderProvider with ChangeNotifier {
         _scanCount++;
         _scannedBarcode = barcode; // Store the scanned barcode
 
-
-
         notifyListeners();
         debugPrint('Scanned barcode: $barcode');
 
@@ -160,7 +158,8 @@ class PurchaseOrderProvider with ChangeNotifier {
     }
   }
 
-  Future<List<PurchaseOrder>> getPurchaseOrdersByLocation(String locationCode) async {
+  Future<List<PurchaseOrder>> getPurchaseOrdersByLocation(
+      String locationCode) async {
     try {
       final result = await _sqlConnection.getData("""
         SELECT * FROM VW_DM_PODetails 
@@ -199,7 +198,7 @@ class PurchaseOrderProvider with ChangeNotifier {
       if (item.qtyReceived > item.qtyOrdered) {
         isValidForPosting = false;
         validationMessage +=
-        'Quantity received cannot exceed quantity ordered for ${item.itemCode} - ${item.itemName}. Received: ${item.qtyReceived}, Ordered: ${item.qtyOrdered}\n';
+            'Quantity received cannot exceed quantity ordered for ${item.itemCode} - ${item.itemName}. Received: ${item.qtyReceived}, Ordered: ${item.qtyOrdered}\n';
       }
 
       // Check serial numbers for serialized items
@@ -207,7 +206,7 @@ class PurchaseOrderProvider with ChangeNotifier {
         if (item.serials.length != item.qtyReceived) {
           isValidForPosting = false;
           validationMessage +=
-          'Serial numbers required for ${item.itemCode} - ${item.itemName}. Expected: ${item.qtyReceived}, Provided: ${item.serials.length}\n';
+              'Serial numbers required for ${item.itemCode} - ${item.itemName}. Expected: ${item.qtyReceived}, Provided: ${item.serials.length}\n';
         }
       }
     }
@@ -238,8 +237,10 @@ class PurchaseOrderProvider with ChangeNotifier {
         'ExRate': 1,
         'Discount': 0,
         'GrnType': 'P', // Goods receipt type
-        'Qty': order.items.fold(0.0, (double sum, item) => sum + item.qtyReceived),
-        'DTime': '${TimeOfDay.now().hour.toString().padLeft(2, '0')}:${TimeOfDay.now().minute.toString().padLeft(2, '0')}:00',
+        'Qty':
+            order.items.fold(0.0, (double sum, item) => sum + item.qtyReceived),
+        'DTime':
+            '${TimeOfDay.now().hour.toString().padLeft(2, '0')}:${TimeOfDay.now().minute.toString().padLeft(2, '0')}:00',
         'LoginUser': username,
         'MType': 'P', // Purchase type
         'GrnType1': null
@@ -292,7 +293,9 @@ class PurchaseOrderProvider with ChangeNotifier {
           'QtyReceived': item.qtyReceived,
           'QtyFree': 0,
           'UnitPrice': item.unitPrice.precised(),
-          'GrossTotal': ((item.unitPrice).precised() * (item.qtyReceived).precised()).precised(),
+          'GrossTotal':
+              ((item.unitPrice).precised() * (item.qtyReceived).precised())
+                  .precised(),
           'AvgCost': 0,
           'ProjectCode': null,
           'AnalysisCode': null,
@@ -390,8 +393,7 @@ class PurchaseOrderProvider with ChangeNotifier {
       print('ERROR in postGoodsReceipt:');
       print('Message: $e');
       print('Stack trace: $stackTrace');
-      AppAlerts.appToast(
-          message: "Failed to post GRN: ${e.toString()}");
+      AppAlerts.appToast(message: "Failed to post GRN: ${e.toString()}");
     }
   }
 
@@ -400,7 +402,7 @@ class PurchaseOrderProvider with ChangeNotifier {
   SELECT GrnNumber 
   FROM GrnHeader 
   WHERE GrnNumber LIKE 'AGRN%'
-  ORDER BY GrnNumber DESC
+  ORDER BY GrnNumber
   ''';
     final result = await _sqlConnection.getData(query);
     final resultJson = jsonDecode(result);
@@ -413,7 +415,6 @@ class PurchaseOrderProvider with ChangeNotifier {
       return 'AGRN${nextNumber.toString().padLeft(5, '0')}';
     }
   }
-
 
   PurchaseOrder? getPurchaseOrderById(String poNumber) {
     try {
@@ -443,7 +444,7 @@ class PurchaseOrderProvider with ChangeNotifier {
 
       final result = await _sqlConnection.getData(
           "SELECT TOP 1 1 FROM GrnDetailSerials "
-              "WHERE SerialNo = '$escapedSerial' AND ItemCode = '$escapedItemCode'");
+          "WHERE SerialNo = '$escapedSerial' AND ItemCode = '$escapedItemCode'");
 
       return result.isEmpty || result == "[]";
     } catch (e) {
@@ -462,15 +463,18 @@ class PurchaseOrderProvider with ChangeNotifier {
       if (order == null) throw Exception('Order not found');
 
       final item = order.items.firstWhere(
-            (i) => i.itemCode == itemCode,
+        (i) => i.itemCode == itemCode,
         orElse: () => throw Exception('Item not found'),
       );
 
       // Check if serial exists in other items or database
-      final isUnique = await isSerialUnique(itemCode: itemCode, serialNo: serialNo);
+      final isUnique =
+          await isSerialUnique(itemCode: itemCode, serialNo: serialNo);
       if (!isUnique) {
-        AppAlerts.appToast(message: 'Serial number $serialNo already exists in another item');
-        throw Exception('Serial number $serialNo already exists in another item');
+        AppAlerts.appToast(
+            message: 'Serial number $serialNo already exists in another item');
+        throw Exception(
+            'Serial number $serialNo already exists in another item');
       }
 
       item.qtyReceived++;
@@ -491,7 +495,7 @@ class PurchaseOrderProvider with ChangeNotifier {
       if (order == null) throw Exception('Order not found');
 
       final item = order.items.firstWhere(
-            (i) => i.itemCode == itemCode,
+        (i) => i.itemCode == itemCode,
         orElse: () => throw Exception('Item not found'),
       );
 
