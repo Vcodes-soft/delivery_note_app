@@ -179,7 +179,7 @@ class _PurchaseOrderDetailScreenState extends State<PurchaseOrderDetailScreen> {
                       .postGoodsReceipt(context, widget.poNumber);
                 },
                 style: ElevatedButton.styleFrom(
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadiusGeometry.circular(10)),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                   padding:
                   const EdgeInsets.symmetric(horizontal: 10, vertical: 16),
                   backgroundColor: Colors.blue[700]
