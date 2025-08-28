@@ -16,14 +16,22 @@ class PurchaseOrderProvider with ChangeNotifier {
   List<PurchaseOrder> _purchaseOrders = [];
   bool _isLoading = false;
   String? _error;
-
   List<PurchaseOrder> get purchaseOrders => _purchaseOrders;
   bool get isLoading => _isLoading;
   String? get error => _error;
-
-  // For PurchaseOrderProvider
   List<PurchaseOrder> filteredPurchaseOrders = [];
   String searchQuery = '';
+  FlutterDataWedge? dataWedge;
+  StreamSubscription? _scanSubscription;
+  bool _isScannerActive = false;
+  bool _scanCooldown = false;
+  int _scanCount = 0;
+  bool get isScannerActive => _isScannerActive;
+  int get scanCount => _scanCount;
+  String? _scannedBarcode;
+  String? get scannedBarcode => _scannedBarcode;
+  bool isValidForPosting = true;
+  String validationMessage = '';
 
   void searchPurchaseOrders(String query) {
     searchQuery = query;
@@ -73,17 +81,6 @@ class PurchaseOrderProvider with ChangeNotifier {
     }
   }
 
-  // Scanner instance
-  FlutterDataWedge? dataWedge;
-  StreamSubscription? _scanSubscription;
-  String _errorMessage = '';
-  bool _isScannerActive = false;
-  bool _scanCooldown = false;
-  int _scanCount = 0;
-  // Getters
-  bool get isScannerActive => _isScannerActive;
-  int get scanCount => _scanCount;
-
   void setLoading(bool value) {
     _isLoading = value;
     notifyListeners();
@@ -108,10 +105,6 @@ class PurchaseOrderProvider with ChangeNotifier {
       rethrow;
     }
   }
-
-  // Add these to your OrderProvider
-  String? _scannedBarcode;
-  String? get scannedBarcode => _scannedBarcode;
 
   void clearScannedBarcode() {
     _scannedBarcode = null;
@@ -186,10 +179,6 @@ class PurchaseOrderProvider with ChangeNotifier {
       throw Exception('Failed to fetch orders: ${e.toString()}');
     }
   }
-
-  // Validate quantities before proceeding
-  bool isValidForPosting = true;
-  String validationMessage = '';
 
   Future<void> postGoodsReceipt(BuildContext context, String poNumber) async {
     validationMessage = "";
@@ -424,7 +413,9 @@ class PurchaseOrderProvider with ChangeNotifier {
       return 'AGRN00001';
     } else {
       // Extract all GRN numbers and parse their numeric parts
-      final grnNumbers = resultJson.map<String>((item) => item['GrnNumber'] as String).toList();
+      final grnNumbers = resultJson
+          .map<String>((item) => item['GrnNumber'] as String)
+          .toList();
 
       // Find the maximum number
       int maxNumber = 0;
@@ -439,6 +430,7 @@ class PurchaseOrderProvider with ChangeNotifier {
       return 'AGRN${nextNumber.toString().padLeft(5, '0')}';
     }
   }
+
   PurchaseOrder? getPurchaseOrderById(String poNumber) {
     try {
       return _purchaseOrders.firstWhere((order) => order.poNumber == poNumber);

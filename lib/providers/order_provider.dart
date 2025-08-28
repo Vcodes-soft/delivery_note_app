@@ -14,13 +14,25 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class OrderProvider with ChangeNotifier {
   final MssqlConnection _sqlConnection = MssqlConnection.getInstance();
-  List<SalesOrder> _salesOrders = [];
-  bool _isLoading = false;
   String? _error;
-
+  List<SalesOrder> _salesOrders = [];
   List<SalesOrder> get salesOrders => _salesOrders;
+  List<SalesOrder> filteredSalesOrders = [];
+  bool _isLoading = false;
   bool get isLoading => _isLoading;
   String? get error => _error;
+  String searchQuery = '';
+  bool isValidForPosting = true;
+  String validationMessage = '';
+  FlutterDataWedge? dataWedge;
+  StreamSubscription? _scanSubscription;
+  bool _isScannerActive = false;
+  bool _scanCooldown = false;
+  int _scanCount = 0;
+  bool get isScannerActive => _isScannerActive;
+  int get scanCount => _scanCount;
+  String? _scannedBarcode;
+  String? get scannedBarcode => _scannedBarcode;
 
   Future<void> fetchSalesOrders() async {
     try {
@@ -56,11 +68,6 @@ class OrderProvider with ChangeNotifier {
       notifyListeners();
     }
   }
-
-
-// For OrderProvider
-  List<SalesOrder> filteredSalesOrders = [];
-  String searchQuery = '';
 
   void searchSalesOrders(String query) {
     searchQuery = query;
@@ -131,11 +138,6 @@ class OrderProvider with ChangeNotifier {
     }
   }
 
-  bool isValidForPosting = true;
-  String validationMessage = '';
-
-
-
   Future<void> postDeliveryNote(BuildContext context, String soNumber) async {
     validationMessage = "";
     isValidForPosting = true;
@@ -158,21 +160,21 @@ class OrderProvider with ChangeNotifier {
         if (item.stockQty < item.qtyIssued) {
           isValidForPosting = false;
           validationMessage +=
-          'Insufficient stock for ${item.itemCode} - ${item.itemName}. Available: ${item.stockQty}, Issued: ${item.qtyIssued}\n';
+              'Insufficient stock for ${item.itemCode} - ${item.itemName}. Available: ${item.stockQty}, Issued: ${item.qtyIssued}\n';
         }
       }
 
       if (item.qtyIssued > item.qtyOrdered) {
         isValidForPosting = false;
         validationMessage +=
-        'Quantity issued cannot exceed quantity ordered for ${item.itemCode} - ${item.itemName}. Issued: ${item.qtyIssued}, Ordered: ${item.qtyOrdered}\n';
+            'Quantity issued cannot exceed quantity ordered for ${item.itemCode} - ${item.itemName}. Issued: ${item.qtyIssued}, Ordered: ${item.qtyOrdered}\n';
       }
 
       if (item.serialYN && (item.qtyIssued > 0)) {
         if (item.serials.length != item.qtyIssued) {
           isValidForPosting = false;
           validationMessage +=
-          'Serial numbers required for ${item.itemCode} - ${item.itemName}. Expected: ${item.qtyOrdered}, Provided: ${item.serials.length}\n';
+              'Serial numbers required for ${item.itemCode} - ${item.itemName}. Expected: ${item.qtyOrdered}, Provided: ${item.serials.length}\n';
         }
       }
     }
@@ -180,8 +182,7 @@ class OrderProvider with ChangeNotifier {
     if (!isValidForPosting) {
       setLoading(false);
       AppAlerts.appToast(
-          message:
-          "Delivery note validation failed: \n $validationMessage");
+          message: "Delivery note validation failed: \n $validationMessage");
       return;
     }
 
@@ -430,7 +431,8 @@ class OrderProvider with ChangeNotifier {
       return 'ADN000001';
     } else {
       // Extract all DN numbers and parse their numeric parts
-      final dnNumbers = resultJson.map<String>((item) => item['DnNumber'] as String).toList();
+      final dnNumbers =
+          resultJson.map<String>((item) => item['DnNumber'] as String).toList();
 
       // Find the maximum number
       int maxNumber = 0;
@@ -445,15 +447,6 @@ class OrderProvider with ChangeNotifier {
       return 'ADN${nextNumber.toString().padLeft(6, '0')}';
     }
   }
-  FlutterDataWedge? dataWedge;
-  StreamSubscription? _scanSubscription;
-  String _errorMessage = '';
-  bool _isScannerActive = false;
-  bool _scanCooldown = false;
-  int _scanCount = 0;
-
-  bool get isScannerActive => _isScannerActive;
-  int get scanCount => _scanCount;
 
   void setLoading(bool value) {
     _isLoading = value;
@@ -478,9 +471,6 @@ class OrderProvider with ChangeNotifier {
       rethrow;
     }
   }
-
-  String? _scannedBarcode;
-  String? get scannedBarcode => _scannedBarcode;
 
   void clearScannedBarcode() {
     _scannedBarcode = null;
@@ -564,7 +554,7 @@ class OrderProvider with ChangeNotifier {
 
       final result = await _sqlConnection.getData(
           "SELECT TOP 1 1 FROM InvDetailSerials "
-              "WHERE SerialNo = '$escapedSerial' AND ItemCode = '$escapedItemCode'");
+          "WHERE SerialNo = '$escapedSerial' AND ItemCode = '$escapedItemCode'");
 
       return result.isEmpty || result == "[]";
     } catch (e) {
@@ -583,12 +573,12 @@ class OrderProvider with ChangeNotifier {
       if (order == null) throw Exception('Order not found');
 
       final item = order.items.firstWhere(
-            (i) => i.itemCode == itemCode,
+        (i) => i.itemCode == itemCode,
         orElse: () => throw Exception('Item not found'),
       );
 
       final isUnique =
-      await isSerialUnique(itemCode: itemCode, serialNo: serialNo);
+          await isSerialUnique(itemCode: itemCode, serialNo: serialNo);
       if (!isUnique) {
         return AppAlerts.appToast(
             message: 'Serial number $serialNo already exists in another item');
@@ -603,7 +593,7 @@ class OrderProvider with ChangeNotifier {
         if (item.serials.length >= item.stockQty) {
           return AppAlerts.appToast(
               message:
-              'Cannot add serial - would exceed available stock (${item.stockQty})');
+                  'Cannot add serial - would exceed available stock (${item.stockQty})');
         }
       }
       item.qtyIssued++;
@@ -624,7 +614,7 @@ class OrderProvider with ChangeNotifier {
       if (order == null) throw Exception('Order not found');
 
       final item = order.items.firstWhere(
-            (i) => i.itemCode == itemCode,
+        (i) => i.itemCode == itemCode,
         orElse: () => throw Exception('Item not found'),
       );
 
