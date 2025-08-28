@@ -19,50 +19,68 @@ class SummaryCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Card(
+      color: Colors.white,
       elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: Padding(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            /// Title + Status
             Row(
-              mainAxisAlignment: MainAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Expanded(
                   child: Text(
                     title,
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.bold,
-                      // color: Colors.red,
                     ),
                   ),
                 ),
-                // Container(
-                //   padding: const EdgeInsets.symmetric(
-                //     horizontal: 8,
-                //     vertical: 4,
-                //   ),
-                //   decoration: BoxDecoration(
-                //     color: statusColor.withOpacity(0.2),
-                //     borderRadius: BorderRadius.circular(12),
-                //   ),
-                //   child: Text(
-                //     status,
-                //     style: TextStyle(
-                //       color: statusColor,
-                //       fontWeight: FontWeight.bold,
-                //     ),
-                //   ),
-                // ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: statusColor.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    status,
+                    style: TextStyle(
+                      color: statusColor,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
               ],
             ),
-            const SizedBox(height: 8),
-            Text(subtitle),
-            const SizedBox(height: 8),
-            ...details.map((detail) => Padding(
-              padding: const EdgeInsets.only(top: 4.0),
-              child: Text(detail),
-            )),
+            const SizedBox(height: 6),
+
+            /// Subtitle (e.g., Ref No)
+            Text(
+              subtitle,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Colors.grey.shade700,
+              ),
+            ),
+
+            const Divider(height: 20),
+
+            /// Detail lines
+            ...details.map(
+                  (detail) => Padding(
+                padding: const EdgeInsets.symmetric(vertical: 2),
+                child: Text(
+                  detail,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    fontSize: 14.5,
+                    color: Colors.grey.shade800,
+                  ),
+                ),
+              ),
+            ),
           ],
         ),
       ),

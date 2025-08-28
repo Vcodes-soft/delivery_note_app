@@ -29,12 +29,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     return Scaffold(
       key: scaffoldKey,
-      drawer: Drawer(
+      endDrawer: Drawer(
         child: ListView(
           padding: EdgeInsets.zero,
           children: [
-            DrawerHeader(child: SizedBox()),
-            // Image.asset("assets/bg/drawer_bg.jpg"),
+            // DrawerHeader(child: SizedBox()),
+            Image.asset("assets/bg/drawer_bg.jpeg"),
             Card(
               color: Color.fromRGBO(255, 213, 3, 1.0),
               child: Padding(
@@ -110,7 +110,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 // Spacer to push username + icon to the right
                 // Spacer(),
 
-                SizedBox(width: 20,),
+                SizedBox(
+                  width: 20,
+                ),
 
                 // Username + Logout Icon
                 Expanded(
@@ -141,8 +143,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       IconButton(
                         icon: const Icon(Icons.logout, color: Colors.black),
                         onPressed: () {
-                          Provider.of<AuthProvider>(context, listen: false)
-                              .logout(context);
+                          scaffoldKey.currentState!.openEndDrawer();
                         },
                       ),
                     ],

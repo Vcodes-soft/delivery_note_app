@@ -1,13 +1,11 @@
-import 'package:delivery_note_app/models/delivery_note_header.dart';
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+
+import 'package:delivery_note_app/models/sales_order_model.dart';
 import 'package:delivery_note_app/providers/order_provider.dart';
 import 'package:delivery_note_app/widgets/add_lot_dialog.dart';
 import 'package:delivery_note_app/widgets/item_card.dart';
 import 'package:delivery_note_app/widgets/summary_card.dart';
-import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-
-import '../../models/item_model.dart';
 
 class SalesOrderDetailScreen extends StatefulWidget {
   final String soNumber;
@@ -19,14 +17,139 @@ class SalesOrderDetailScreen extends StatefulWidget {
 }
 
 class _SalesOrderDetailScreenState extends State<SalesOrderDetailScreen> {
+  final Color themeColor = const Color.fromRGBO(255, 213, 3, 1.0);
+
   @override
   void initState() {
-    WidgetsBinding.instance.addPostFrameCallback((e) {
-      Provider.of<OrderProvider>(context, listen: false).resetValidation();
-      Provider.of<OrderProvider>(context, listen: false)
-          .fetchSalesOrderDetails(widget.soNumber);
-    });
     super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final provider = Provider.of<OrderProvider>(context, listen: false);
+      provider.resetValidation();
+      provider.fetchSalesOrderDetails(widget.soNumber);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final orderProvider = Provider.of<OrderProvider>(context);
+    final order = orderProvider.getSalesOrderById(widget.soNumber);
+
+    if (order == null || orderProvider.isLoading) {
+      return Scaffold(
+        appBar: _buildAppBar('Loading...'),
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    return Scaffold(
+      appBar: _buildAppBar('SO #${order.soNumber}'),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            /// Summary Card (Replaces manual layout)
+            SummaryCard(
+              title: order.customerName,
+              subtitle: 'Ref No: ${order.refNo}',
+              details: [
+                'SO Date: ${order.soDate.day}-${order.soDate.month}-${order.soDate.year}',
+                'Salesman: ${order.salesmanName}',
+                'Location: ${order.locationCode}',
+                'Total Items: ${order.items.length}',
+              ],
+              status: order.isPending ? 'PENDING' : 'COMPLETED',
+              statusColor: order.isPending ? Colors.orange : Colors.green,
+            ),
+
+            const SizedBox(height: 24),
+
+            /// Item Details Header
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 8.0),
+              child: Text(
+                'Item Details',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+            ),
+
+            const SizedBox(height: 12),
+
+            /// Item List
+            ...order.items.map((item) => ItemCard(
+              item: item,
+              soNumber: order.soNumber,
+              onAddLotPressed: item.serialYN
+                  ? () => showDialog(
+                context: context,
+                builder: (context) => AddLotScreen(
+                  soNumber: order.soNumber,
+                  itemCode: item.itemCode,
+                  orderedQty: item.qtyOrdered,
+                  availableStock: item.stockQty,
+                ),
+              )
+                  : null,
+            )),
+
+            const SizedBox(height: 24),
+
+            /// Post Delivery Note Button
+            Center(
+              child: ElevatedButton.icon(
+                onPressed: () {
+                  Provider.of<OrderProvider>(context, listen: false)
+                      .postDeliveryNote(context, widget.soNumber);
+                },
+                icon: const Icon(Icons.local_shipping_outlined, size: 20),
+                label: const Text('Post Delivery Note',
+                    style: TextStyle(fontSize: 16)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blue[700],
+                  foregroundColor: Colors.white,
+                  padding:
+                  const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 24),
+          ],
+        ),
+      ),
+    );
+  }
+
+  PreferredSizeWidget _buildAppBar(String titleText) {
+    return AppBar(
+      backgroundColor: themeColor,
+      leading: IconButton(
+        onPressed: () => Navigator.pop(context),
+        icon: const Icon(Icons.arrow_back_ios, color: Colors.white, size: 18),
+      ),
+      title: Text(titleText,
+          style: const TextStyle(color: Colors.white, fontSize: 14)),
+      elevation: 1,
+      actions: [
+        Consumer<OrderProvider>(
+          builder: (context, provider, _) {
+            if (provider.validationMessage.isNotEmpty) {
+              return IconButton(
+                onPressed: () => _showValidationDialog(
+                    context, provider.validationMessage),
+                icon: const Icon(Icons.error_outline,
+                    color: Colors.white, size: 18),
+                tooltip: 'View validation details',
+              );
+            }
+            return const SizedBox.shrink();
+          },
+        )
+      ],
+    );
   }
 
   void _showValidationDialog(BuildContext context, String message) {
@@ -34,7 +157,7 @@ class _SalesOrderDetailScreenState extends State<SalesOrderDetailScreen> {
 
     showDialog(
       context: context,
-      builder: (context) => Dialog(
+      builder: (_) => Dialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         child: Padding(
           padding: const EdgeInsets.all(20),
@@ -42,6 +165,7 @@ class _SalesOrderDetailScreenState extends State<SalesOrderDetailScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              /// Title
               Row(
                 children: [
                   Icon(Icons.warning_amber_rounded,
@@ -55,6 +179,8 @@ class _SalesOrderDetailScreenState extends State<SalesOrderDetailScreen> {
                 ],
               ),
               const SizedBox(height: 16),
+
+              /// Message Body
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
@@ -72,14 +198,17 @@ class _SalesOrderDetailScreenState extends State<SalesOrderDetailScreen> {
                   ),
                 ),
               ),
+
               const SizedBox(height: 24),
+
+              /// Action Button
               Align(
                 alignment: Alignment.centerRight,
                 child: TextButton(
                   style: TextButton.styleFrom(
                     foregroundColor: Colors.orange[700],
-                    padding:
-                    const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 24, vertical: 8),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(8),
                     ),
@@ -103,101 +232,5 @@ class _SalesOrderDetailScreenState extends State<SalesOrderDetailScreen> {
           .join('\n');
     }
     return rawMessage;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final orderProvider = Provider.of<OrderProvider>(context);
-    final order = orderProvider.getSalesOrderById(widget.soNumber);
-
-    if (order == null || orderProvider.isLoading) {
-      return Scaffold(
-        appBar: AppBar(),
-        body: const Center(child: CupertinoActivityIndicator()),
-      );
-    }
-
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('SO #${order.soNumber}'),
-        actions: [
-          Consumer<OrderProvider>(
-            builder: (context, provider, _) {
-              if (provider.validationMessage.isNotEmpty) {
-                return IconButton(
-                  onPressed: () => _showValidationDialog(
-                      context, provider.validationMessage),
-                  icon:
-                  const Icon(Icons.error_outline, color: Colors.redAccent),
-                  tooltip: 'View validation details',
-                );
-              }
-              return const SizedBox.shrink();
-            },
-          )
-        ],
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SummaryCard(
-              title: order.customerName,
-              subtitle: 'Ref No: ${order.refNo}',
-              details: [
-                'SO Date: ${order.soDate.day}-${order.soDate.month}-${order.soDate.year}',
-                'Salesman: ${order.salesmanName}',
-                'Location: ${order.locationCode}',
-                'Total Items: ${order.items.length}',
-              ],
-              status: order.isPending ? 'PENDING' : 'COMPLETED',
-              statusColor: order.isPending ? Colors.orange : Colors.green,
-            ),
-            const SizedBox(height: 24),
-            const Text('Item Details',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
-            ...order.items.map((item) => ItemCard(
-              item: item,
-              soNumber: order.soNumber,
-              onAddLotPressed: item.serialYN
-                  ? () => showDialog(
-                context: context,
-                builder: (context) => AddLotScreen(
-                  soNumber: order.soNumber,
-                  itemCode: item.itemCode,
-                  orderedQty: item.qtyOrdered,
-                  availableStock: item.stockQty,
-                ),
-              )
-                  : null,
-            )),
-            const SizedBox(height: 24),
-            Center(
-              child: Consumer<OrderProvider>(builder: (context, provider, _) {
-                return Visibility(
-                  visible: !provider.isLoading,
-                  replacement: CircularProgressIndicator(),
-                  child: ElevatedButton(
-                    onPressed: () {
-                      Provider.of<OrderProvider>(context, listen: false)
-                          .postDeliveryNote(context, widget.soNumber);
-                    },
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 32, vertical: 16),
-                    ),
-                    child: const Text('Post Delivery Note',
-                        style: TextStyle(fontSize: 18)),
-                  ),
-                );
-              }),
-            ),
-            const SizedBox(height: 24),
-          ],
-        ),
-      ),
-    );
   }
 }

@@ -57,6 +57,20 @@ class OrderProvider with ChangeNotifier {
     }
   }
 
+
+// For OrderProvider
+  List<SalesOrder> filteredSalesOrders = [];
+  String searchQuery = '';
+
+  void searchSalesOrders(String query) {
+    searchQuery = query;
+    filteredSalesOrders = salesOrders.where((order) {
+      return order.soNumber.toLowerCase().contains(query.toLowerCase()) ||
+          order.customerName.toLowerCase().contains(query.toLowerCase());
+    }).toList();
+    notifyListeners();
+  }
+
   Future<void> fetchSalesOrderDetails(String soNumber) async {
     try {
       _isLoading = true;
@@ -120,6 +134,8 @@ class OrderProvider with ChangeNotifier {
   bool isValidForPosting = true;
   String validationMessage = '';
 
+
+
   Future<void> postDeliveryNote(BuildContext context, String soNumber) async {
     validationMessage = "";
     isValidForPosting = true;
@@ -131,6 +147,7 @@ class OrderProvider with ChangeNotifier {
 
     if (order == null) {
       print('Order not found for SO: $soNumber');
+      setLoading(false);
       AppAlerts.appToast(message: "Order not found for SO: $soNumber");
       return;
     }
@@ -161,10 +178,10 @@ class OrderProvider with ChangeNotifier {
     }
 
     if (!isValidForPosting) {
-      notifyListeners();
+      setLoading(false);
       AppAlerts.appToast(
           message:
-          "Delivery note validation failed, please check the log in above");
+          "Delivery note validation failed: \n $validationMessage");
       return;
     }
 
@@ -388,6 +405,7 @@ class OrderProvider with ChangeNotifier {
       // Refresh the order details
       await fetchSalesOrderDetails(soNumber);
     } catch (e, stackTrace) {
+      setLoading(false);
       print('ERROR in postDeliveryNote:');
       print('Message: $e');
       print('Stack trace: $stackTrace');

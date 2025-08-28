@@ -15,15 +15,16 @@ class PurchaseOrdersScreen extends StatefulWidget {
 
 class _PurchaseOrdersScreenState extends State<PurchaseOrdersScreen> {
   final TextEditingController _searchController = TextEditingController();
-  List<PurchaseOrder> _filteredOrders = [];
+  bool _isInitialLoad = true;
+  final Color themeColor = const Color.fromRGBO(251, 212, 18, 1.0);
 
   @override
   void initState() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      Provider.of<PurchaseOrderProvider>(context, listen: false).initializeScanner();
-      Provider.of<PurchaseOrderProvider>(context, listen: false).fetchPurchaseOrders();
-    });
     super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadPurchaseOrders();
+    });
+    _searchController.addListener(_onSearchChanged);
   }
 
   @override
@@ -32,65 +33,170 @@ class _PurchaseOrdersScreenState extends State<PurchaseOrdersScreen> {
     super.dispose();
   }
 
-  void _filterOrders(String query) {
+  void _onSearchChanged() {
     final provider = Provider.of<PurchaseOrderProvider>(context, listen: false);
+    provider.searchPurchaseOrders(_searchController.text);
+  }
 
-    setState(() {
-      _filteredOrders = provider.purchaseOrders.where((order) {
-        return order.poNumber.toLowerCase().contains(query.toLowerCase()) ||
-            order.supplierName.toLowerCase().contains(query.toLowerCase());
-      }).toList();
-    });
+  Future<void> _loadPurchaseOrders() async {
+    final provider = Provider.of<PurchaseOrderProvider>(context, listen: false);
+    try {
+      provider.initializeScanner();
+      await provider.fetchPurchaseOrders();
+    } catch (e) {
+      // Handle error if needed
+    } finally {
+      if (mounted) {
+        setState(() => _isInitialLoad = false);
+      }
+    }
+  }
+
+  Future<void> _refreshPurchaseOrders() async {
+    final provider = Provider.of<PurchaseOrderProvider>(context, listen: false);
+    try {
+      await provider.fetchPurchaseOrders();
+    } catch (e) {
+      // Handle error if needed
+      rethrow;
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Purchase Orders'),
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(60),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: TextField(
-              controller: _searchController,
-              onChanged: _filterOrders,
-              decoration: InputDecoration(
-                hintText: 'Search by PO# or Supplier',
-                prefixIcon: const Icon(Icons.search),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                contentPadding: const EdgeInsets.symmetric(vertical: 12),
-              ),
-            ),
-          ),
+        backgroundColor: themeColor,
+        leading: IconButton(
+          onPressed: () => Navigator.pop(context),
+          icon: const Icon(Icons.arrow_back_ios, color: Colors.white, size: 18),
         ),
+        title: const Text('Purchase Orders', style: TextStyle(color: Colors.white, fontSize: 16)),
+        elevation: 1,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh_rounded, color: Colors.white, size: 18),
+            tooltip: 'Refresh Orders',
+            onPressed: _refreshPurchaseOrders,
+          ),
+        ],
       ),
       body: Consumer<PurchaseOrderProvider>(
         builder: (context, provider, child) {
-          if (provider.isLoading) {
-            return const Center(child: CupertinoActivityIndicator());
+          if (_isInitialLoad) {
+            return const Center(child: CircularProgressIndicator());
           }
 
-          final ordersToDisplay = _searchController.text.isEmpty
+          final ordersToDisplay = provider.searchQuery.isEmpty
               ? provider.purchaseOrders
-              : _filteredOrders;
+              : provider.filteredPurchaseOrders;
 
-          return ordersToDisplay.isEmpty
-              ? const Center(child: Text('No orders found'))
-              : ListView.builder(
-            padding: const EdgeInsets.all(16),
-            itemCount: ordersToDisplay.length,
-            itemBuilder: (context, index) {
-              return OrderCard(
-                order: ordersToDisplay[index],
-                onTap: () => Navigator.of(context).pushNamed(
-                  '/purchase-order-detail',
-                  arguments: ordersToDisplay[index].poNumber,
+          if (ordersToDisplay.isEmpty) {
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.assignment, size: 64, color: Colors.grey),
+                  const SizedBox(height: 16),
+                  Text(
+                    provider.searchQuery.isEmpty
+                        ? 'No purchase orders found'
+                        : 'No results for "${provider.searchQuery}"',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: 8),
+                  ElevatedButton(
+                    onPressed: _refreshPurchaseOrders,
+                    style: ElevatedButton.styleFrom(backgroundColor: themeColor),
+                    child: const Text('Refresh', style: TextStyle(color: Colors.white)),
+                  ),
+                ],
+              ),
+            );
+          }
+
+          return Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(12.0),
+                child: TextField(
+                  controller: _searchController,
+                  decoration: InputDecoration(
+                    hintText: 'Search by PO# or Supplier',
+                    hintStyle: const TextStyle(fontSize: 14),
+                    prefixIcon: const Icon(Icons.search),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    filled: true,
+                    fillColor: Colors.white,
+                    contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                    suffixIcon: provider.searchQuery.isNotEmpty
+                        ? IconButton(
+                      icon: const Icon(Icons.clear),
+                      onPressed: () {
+                        _searchController.clear();
+                        provider.searchPurchaseOrders('');
+                      },
+                    )
+                        : null,
+                  ),
                 ),
-              );
-            },
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'Showing ${ordersToDisplay.length} orders',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Colors.grey.shade600,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Expanded(
+                child: RefreshIndicator(
+                  onRefresh: _refreshPurchaseOrders,
+                  edgeOffset: 20,
+                  child: ListView.separated(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                    itemCount: ordersToDisplay.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 8),
+                    itemBuilder: (context, index) {
+                      final order = ordersToDisplay[index];
+
+                      return Card(
+                        color: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        elevation: 3,
+                        margin: EdgeInsets.zero,
+                        shadowColor: isDark ? Colors.black45 : Colors.grey.withOpacity(0.2),
+                        child: ListTile(
+                          title: Text(
+                            order.poNumber,
+                            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                          ),
+                          subtitle: Text(
+                            'Supplier: ${order.supplierName}',
+                            style: const TextStyle(fontSize: 13),
+                          ),
+                          onTap: () => Navigator.of(context).pushNamed(
+                            '/purchase-order-detail',
+                            arguments: order.poNumber,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ),
+            ],
           );
         },
       ),

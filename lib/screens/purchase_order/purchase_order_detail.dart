@@ -102,13 +102,14 @@ class _PurchaseOrderDetailScreenState extends State<PurchaseOrderDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final Color themeColor = const Color.fromRGBO(251, 212, 18, 1.0);
     final order =
     Provider.of<PurchaseOrderProvider>(context).getPurchaseOrderById(widget.poNumber);
 
     if (order == null) {
       return Scaffold(
         appBar: AppBar(
-
+        backgroundColor: themeColor,
         ),
         body: const Center(child: Text('Order not found')),
       );
@@ -116,6 +117,7 @@ class _PurchaseOrderDetailScreenState extends State<PurchaseOrderDetailScreen> {
 
     return Scaffold(
       appBar: AppBar(
+        backgroundColor: themeColor,
         title: Text(order.poNumber),
         actions: [
           Consumer<PurchaseOrderProvider>(
@@ -127,10 +129,8 @@ class _PurchaseOrderDetailScreenState extends State<PurchaseOrderDetailScreen> {
                   tooltip: 'View validation details',
                 );
               }
-              // return const SizedBox.shrink();
-              return IconButton(onPressed: (){
-                provider.getNextGrnNumber();
-              }, icon: Icon(Icons.abc));
+              return const SizedBox.shrink();
+
             },
 
           )        ],
@@ -179,11 +179,15 @@ class _PurchaseOrderDetailScreenState extends State<PurchaseOrderDetailScreen> {
                       .postGoodsReceipt(context, widget.poNumber);
                 },
                 style: ElevatedButton.styleFrom(
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadiusGeometry.circular(10)),
                   padding:
-                  const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                  const EdgeInsets.symmetric(horizontal: 10, vertical: 16),
+                  backgroundColor: Colors.blue[700]
                 ),
-                child: const Text('Post GRN',
-                    style: TextStyle(fontSize: 18)),
+                child: Center(
+                  child: const Text('Post GRN',
+                      style: TextStyle(fontSize: 15,color: Colors.white)),
+                ),
               ),
             ),
             const SizedBox(height: 24),

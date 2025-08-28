@@ -21,6 +21,19 @@ class PurchaseOrderProvider with ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get error => _error;
 
+  // For PurchaseOrderProvider
+  List<PurchaseOrder> filteredPurchaseOrders = [];
+  String searchQuery = '';
+
+  void searchPurchaseOrders(String query) {
+    searchQuery = query;
+    filteredPurchaseOrders = purchaseOrders.where((order) {
+      return order.poNumber.toLowerCase().contains(query.toLowerCase()) ||
+          order.supplierName.toLowerCase().contains(query.toLowerCase());
+    }).toList();
+    notifyListeners();
+  }
+
   Future<void> fetchPurchaseOrders() async {
     try {
       _isLoading = true;
@@ -215,7 +228,7 @@ class PurchaseOrderProvider with ChangeNotifier {
     if (!isValidForPosting) {
       notifyListeners();
       AppAlerts.appToast(
-          message: "GRN validation failed, please check the log above");
+          message: "GRN validation failed: \n $validationMessage");
       return;
     }
 

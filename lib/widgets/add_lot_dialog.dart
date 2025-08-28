@@ -361,7 +361,7 @@ class _AddLotScreenState extends State<AddLotScreen> {
                     },
                   ),
                 ),
-                onSubmitted: (value) => _addSerial(context, value),
+                onSubmitted: (value) => _serialController.text.isNotEmpty ? _addSerial(context, value):(){},
               ),
 
               const SizedBox(height: 20),
@@ -753,7 +753,7 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
                       width: 50,
                       height: 50,
                       child: Lottie.asset(
-                        'assets/animate_icon/scanner.json',
+                        'assets/animated_icon/scanner.json',
                         animate: _isScanning,
                         repeat: _isScanning,
                       ),
@@ -809,7 +809,7 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
                   },
                 ),
               ),
-              onSubmitted: (value) => _addSerial(context, value),
+              onSubmitted: (value) => _serialController.text.isNotEmpty ? _addSerial(context, value):(){},
             ),
 
             const SizedBox(height: 20),
