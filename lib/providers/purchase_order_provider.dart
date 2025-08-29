@@ -200,7 +200,7 @@ class PurchaseOrderProvider with ChangeNotifier {
       if (item.qtyReceived > item.qtyOrdered) {
         isValidForPosting = false;
         validationMessage +=
-            'Quantity received cannot exceed quantity ordered for ${item.itemCode} - ${item.itemName}. Received: ${item.qtyReceived}, Ordered: ${item.qtyOrdered}\n';
+        'Quantity received cannot exceed quantity ordered for ${item.itemCode} - ${item.itemName}. Received: ${item.qtyReceived}, Ordered: ${item.qtyOrdered}\n';
       }
 
       // Check serial numbers for serialized items
@@ -208,7 +208,24 @@ class PurchaseOrderProvider with ChangeNotifier {
         if (item.serials.length != item.qtyReceived) {
           isValidForPosting = false;
           validationMessage +=
-              'Serial numbers required for ${item.itemCode} - ${item.itemName}. Expected: ${item.qtyReceived}, Provided: ${item.serials.length}\n';
+          'Serial numbers required for ${item.itemCode} - ${item.itemName}. Expected: ${item.qtyReceived}, Provided: ${item.serials.length}\n';
+        }
+
+        // Check for duplicate serial numbers in the database (ItemCode + SerialNo combination)
+        for (var serial in item.serials) {
+          final checkSerialQuery = '''
+          SELECT COUNT(*) as count FROM GrnDetailSerials 
+          WHERE CmpyCode = '$companyCode' AND ItemCode = '${item.itemCode}' AND SerialNo = '${serial.serialNo}'
+        ''';
+
+          final resultString = await _sqlConnection.getData(checkSerialQuery);
+          final List<dynamic> result = jsonDecode(resultString);
+
+          if (result.isNotEmpty) {
+            isValidForPosting = false;
+            validationMessage +=
+            'Serial number ${serial.serialNo} already exists for item ${item.itemCode} in the system\n';
+          }
         }
       }
     }
@@ -240,9 +257,9 @@ class PurchaseOrderProvider with ChangeNotifier {
         'Discount': 0,
         'GrnType': 'P', // Goods receipt type
         'Qty':
-            order.items.fold(0.0, (double sum, item) => sum + item.qtyReceived),
+        order.items.fold(0.0, (double sum, item) => sum + item.qtyReceived),
         'DTime':
-            '${TimeOfDay.now().hour.toString().padLeft(2, '0')}:${TimeOfDay.now().minute.toString().padLeft(2, '0')}:00',
+        '${TimeOfDay.now().hour.toString().padLeft(2, '0')}:${TimeOfDay.now().minute.toString().padLeft(2, '0')}:00',
         'LoginUser': username,
         'MType': 'P', // Purchase type
         'GrnType1': null
@@ -296,8 +313,8 @@ class PurchaseOrderProvider with ChangeNotifier {
           'QtyFree': 0,
           'UnitPrice': item.unitPrice.precised(),
           'GrossTotal':
-              ((item.unitPrice).precised() * (item.qtyReceived).precised())
-                  .precised(),
+          ((item.unitPrice).precised() * (item.qtyReceived).precised())
+              .precised(),
           'AvgCost': 0,
           'ProjectCode': null,
           'AnalysisCode': null,

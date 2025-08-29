@@ -138,6 +138,7 @@ class OrderProvider with ChangeNotifier {
     }
   }
 
+
   Future<void> postDeliveryNote(BuildContext context, String soNumber) async {
     validationMessage = "";
     isValidForPosting = true;
@@ -160,21 +161,37 @@ class OrderProvider with ChangeNotifier {
         if (item.stockQty < item.qtyIssued) {
           isValidForPosting = false;
           validationMessage +=
-              'Insufficient stock for ${item.itemCode} - ${item.itemName}. Available: ${item.stockQty}, Issued: ${item.qtyIssued}\n';
+          'Insufficient stock for ${item.itemCode} - ${item.itemName}. Available: ${item.stockQty}, Issued: ${item.qtyIssued}\n';
         }
       }
 
       if (item.qtyIssued > item.qtyOrdered) {
         isValidForPosting = false;
         validationMessage +=
-            'Quantity issued cannot exceed quantity ordered for ${item.itemCode} - ${item.itemName}. Issued: ${item.qtyIssued}, Ordered: ${item.qtyOrdered}\n';
+        'Quantity issued cannot exceed quantity ordered for ${item.itemCode} - ${item.itemName}. Issued: ${item.qtyIssued}, Ordered: ${item.qtyOrdered}\n';
       }
 
       if (item.serialYN && (item.qtyIssued > 0)) {
         if (item.serials.length != item.qtyIssued) {
           isValidForPosting = false;
           validationMessage +=
-              'Serial numbers required for ${item.itemCode} - ${item.itemName}. Expected: ${item.qtyOrdered}, Provided: ${item.serials.length}\n';
+          'Serial numbers required for ${item.itemCode} - ${item.itemName}. Expected: ${item.qtyOrdered}, Provided: ${item.serials.length}\n';
+        }
+
+        // Check for duplicate serial numbers in the database (ItemCode + SerialNo combination)
+        for (var serial in item.serials) {
+          final checkSerialQuery = '''
+          SELECT COUNT(*) as count FROM InvDetailSerials_DN 
+          WHERE CmpyCode = '$companyCode' AND ItemCode = '${item.itemCode}' AND SerialNo = '${serial.serialNo}'
+        ''';
+
+          final resultString = await _sqlConnection.getData(checkSerialQuery);
+          final count = int.tryParse(resultString) ?? 0;
+          if (count > 0) {
+            isValidForPosting = false;
+            validationMessage +=
+            'Serial number ${serial.serialNo} already exists for item ${item.itemCode} in the system\n';
+          }
         }
       }
     }
@@ -416,6 +433,7 @@ class OrderProvider with ChangeNotifier {
       setLoading(false);
     }
   }
+
 
   Future<String> _getNextDnNumber() async {
     final query = '''
