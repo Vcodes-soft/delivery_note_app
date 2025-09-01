@@ -41,6 +41,9 @@ class _SalesOrderDetailScreenState extends State<SalesOrderDetailScreen> {
       );
     }
 
+    // Check if all items have qtyOrdered <= 0
+    final bool allItemsZeroOrLess = order.items.every((item) => item.qtyOrdered <= 0);
+
     return Scaffold(
       appBar: _buildAppBar('SO #${order.soNumber}'),
       body: SingleChildScrollView(
@@ -94,8 +97,8 @@ class _SalesOrderDetailScreenState extends State<SalesOrderDetailScreen> {
 
             const SizedBox(height: 24),
 
-            /// Post Delivery Note Button
-            Center(
+            /// Post Delivery Note Button - Only show if not all items have qtyOrdered <= 0
+            if (!allItemsZeroOrLess) Center(
               child: ElevatedButton.icon(
                 onPressed: () {
                   Provider.of<OrderProvider>(context, listen: false)

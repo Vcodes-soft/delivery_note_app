@@ -50,8 +50,10 @@ class PurchaseOrderProvider with ChangeNotifier {
 
       final result = await _sqlConnection.getData("""
       SELECT * FROM VW_DM_PODetails
-      ORDER BY PONumber, ItemCode
+      ORDER BY SODate DESC
       """);
+
+
 
       final data = jsonDecode(result) as List;
 
@@ -219,9 +221,8 @@ class PurchaseOrderProvider with ChangeNotifier {
         ''';
 
           final resultString = await _sqlConnection.getData(checkSerialQuery);
-          final List<dynamic> result = jsonDecode(resultString);
-
-          if (result.isNotEmpty) {
+          final count = int.tryParse(resultString) ?? 0;
+          if (count > 0) {
             isValidForPosting = false;
             validationMessage +=
             'Serial number ${serial.serialNo} already exists for item ${item.itemCode} in the system\n';
@@ -407,6 +408,27 @@ class PurchaseOrderProvider with ChangeNotifier {
           }
         }
       }
+
+      // Update PO status based on whether it's fully received
+      bool isFullyReceived = true;
+      for (var item in order.items) {
+        if (item.qtyReceived < item.qtyOrdered) {
+          isFullyReceived = false;
+          break;
+        }
+      }
+
+      final updatePoQuery = '''
+      UPDATE PoHeader 
+      SET Status = '${isFullyReceived ? 'C' : 'O'}', 
+          DelStat = '${isFullyReceived ? 'Y' : 'N'}'
+      WHERE PoNumber = '${order.poNumber}' AND CmpyCode = '${order.companyCode}'
+      ''';
+
+      print('Updating PO status...');
+      await _sqlConnection.writeData(updatePoQuery);
+      print('PO status updated');
+
       AppAlerts.appToast(message: "GRN $nextGrnNumber posted successfully");
     } catch (e, stackTrace) {
       print('ERROR in postGoodsReceipt:');
@@ -415,6 +437,7 @@ class PurchaseOrderProvider with ChangeNotifier {
       AppAlerts.appToast(message: "Failed to post GRN: ${e.toString()}");
     }
   }
+
 
   Future<String> getNextGrnNumber() async {
     final query = '''

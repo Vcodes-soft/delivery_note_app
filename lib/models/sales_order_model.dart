@@ -59,7 +59,7 @@ class SalesOrder {
           itemCode: json['ItemCode'].toString(),
           itemName: json['Description'].toString(),
           unit: json['Unit'].toString(),
-          qtyOrdered: double.parse(json['QtyOrdered'].toString()),
+          qtyOrdered: double.parse(json['QtyRemain'].toString()),
           stockQty: double.parse(json['StockQty'].toString()),
           nonInventory: json['NonInventory'].toString() == '1',
           serialYN: json['SerialYN'].toString() == '1',

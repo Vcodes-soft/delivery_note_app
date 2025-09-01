@@ -41,8 +41,11 @@ class OrderProvider with ChangeNotifier {
       notifyListeners();
 
       final result = await _sqlConnection.getData("""
-      SELECT * FROM VW_DM_SODetails
-      ORDER BY SoNumber, ItemCode
+      SELECT 
+        *,
+        QtyOrdered AS QtyRemain
+      FROM VW_DM_SODetails
+      ORDER BY SODate DESC
       """);
 
       final data = jsonDecode(result) as List;
@@ -137,6 +140,7 @@ class OrderProvider with ChangeNotifier {
       throw Exception('Failed to fetch orders: ${e.toString()}');
     }
   }
+
 
 
   Future<void> postDeliveryNote(BuildContext context, String soNumber) async {
@@ -359,8 +363,23 @@ class OrderProvider with ChangeNotifier {
         await _sqlConnection.writeData(detailQuery);
         print('Detail posted for item ${item.itemCode}');
 
+        // Update SoDetail table with issued quantity
+        final updateSoDetailQuery = '''
+        UPDATE SoDetail 
+        SET QtyIssued = QtyIssued + ${item.qtyIssued}, 
+            SrNo = '${bsno.toString()}'
+        WHERE CmpyCode = '${order.companyCode}' 
+          AND SoNumber = '${order.soNumber}' 
+          AND ItemCode = '${item.itemCode}' 
+      ''';
+
+        print('Updating SoDetail for item ${item.itemCode}...');
+        await _sqlConnection.writeData(updateSoDetailQuery);
+        print('SoDetail updated for item ${item.itemCode}');
+
         // Post serial numbers
         if (item.serialYN && item.serials.isNotEmpty) {
+
           for (var serial in item.serials) {
             final serialDetail = InventoryDetailSerialNo(
               cmpyCode: order.companyCode,
@@ -421,7 +440,8 @@ class OrderProvider with ChangeNotifier {
           textColor: Colors.white);
 
       // Refresh the order details
-      await fetchSalesOrderDetails(soNumber);
+      await fetchSalesOrders();
+      Navigator.pop(context);
     } catch (e, stackTrace) {
       setLoading(false);
       print('ERROR in postDeliveryNote:');
