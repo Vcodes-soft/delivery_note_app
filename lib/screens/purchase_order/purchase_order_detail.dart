@@ -5,6 +5,7 @@ import 'package:delivery_note_app/widgets/add_lot_dialog.dart';
 import 'package:delivery_note_app/widgets/item_card.dart';
 import 'package:delivery_note_app/widgets/summary_card.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 class PurchaseOrderDetailScreen extends StatefulWidget {
@@ -144,7 +145,7 @@ class _PurchaseOrderDetailScreenState extends State<PurchaseOrderDetailScreen> {
               title: order.supplierName,
               subtitle: 'Ref No: ${order.refNo}',
               details: [
-                'PO Date: ${order.poDate.day}-${order.poDate.month}-${order.poDate.year}',
+                'PO Date: ${DateFormat('dd-MM-yyyy').format(order.poDate)}',
                 'Location: ${order.locationCode}',
                 'Total Items: ${order.items.length}',
               ],

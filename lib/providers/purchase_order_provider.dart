@@ -53,8 +53,6 @@ class PurchaseOrderProvider with ChangeNotifier {
       ORDER BY SODate DESC
       """);
 
-
-
       final data = jsonDecode(result) as List;
 
       // Create a map to group orders by PO number
@@ -196,8 +194,11 @@ class PurchaseOrderProvider with ChangeNotifier {
       return;
     }
 
-    // Validate each item's quantities
-    for (var item in order.items) {
+    // Filter items to only those with qtyReceived > 0 for validation
+    final itemsToProcess = order.items.where((item) => item.qtyReceived > 0).toList();
+
+    // Validate each item's quantities (only for items with qtyReceived > 0)
+    for (var item in itemsToProcess) {
       // Check if qty received is <= qty ordered (but not greater)
       if (item.qtyReceived > item.qtyOrdered) {
         isValidForPosting = false;
@@ -239,6 +240,12 @@ class PurchaseOrderProvider with ChangeNotifier {
       return;
     }
 
+    // Check if there are any items with qtyReceived > 0 to process
+    if (itemsToProcess.isEmpty) {
+      AppAlerts.appToast(message: "No items with quantity received to process");
+      return;
+    }
+
     try {
       // 1. Get the next GRN number and increment it if necessary
       String nextGrnNumber = await getNextGrnNumber();
@@ -258,7 +265,7 @@ class PurchaseOrderProvider with ChangeNotifier {
         'Discount': 0,
         'GrnType': 'P', // Goods receipt type
         'Qty':
-        order.items.fold(0.0, (double sum, item) => sum + item.qtyReceived),
+        itemsToProcess.fold(0.0, (double sum, item) => sum + item.qtyReceived),
         'DTime':
         '${TimeOfDay.now().hour.toString().padLeft(2, '0')}:${TimeOfDay.now().minute.toString().padLeft(2, '0')}:00',
         'LoginUser': username,
@@ -297,9 +304,9 @@ class PurchaseOrderProvider with ChangeNotifier {
       await _sqlConnection.writeData(headerQuery);
       print('Header posted successfully with GRN: $nextGrnNumber');
 
-      // 3. Create and post GRNDetails for each item
-      for (var item in order.items) {
-        final bsno = order.items.indexOf(item) + 1;
+      // 3. Create and post GRNDetails for each item with qtyReceived > 0
+      int bsno = 1;
+      for (var item in itemsToProcess) {
         final detail = {
           'CmpyCode': companyCode,
           'GrnNumber': nextGrnNumber,
@@ -371,6 +378,20 @@ class PurchaseOrderProvider with ChangeNotifier {
         await _sqlConnection.writeData(detailQuery);
         print('Detail posted for item ${item.itemCode}');
 
+        // Update SoDetail table with issued quantity
+        final updateSoDetailQuery = '''
+        UPDATE PoDetail 
+        SET QtyReceived = QtyReceived + ${item.qtyReceived}, 
+            SrNo = '${bsno.toString()}'
+        WHERE CmpyCode = '${order.companyCode}' 
+          AND PoNumber = '${order.poNumber}' 
+          AND ItemCode = '${item.itemCode}' 
+      ''';
+
+        print('Updating SoDetail for item ${item.itemCode}...');
+        await _sqlConnection.writeData(updateSoDetailQuery);
+        print('SoDetail updated for item ${item.itemCode}');
+
         // 4. Post serial numbers if item is serialized
         if (item.serialYN && item.serials.isNotEmpty) {
           for (var serial in item.serials) {
@@ -407,9 +428,11 @@ class PurchaseOrderProvider with ChangeNotifier {
             print('Serial ${serial.serialNo} posted');
           }
         }
+
+        bsno++; // Increment bsno for next item
       }
 
-      // Update PO status based on whether it's fully received
+      // Update PO status based on whether it's fully received (considering all items in the order)
       bool isFullyReceived = true;
       for (var item in order.items) {
         if (item.qtyReceived < item.qtyOrdered) {
@@ -418,16 +441,21 @@ class PurchaseOrderProvider with ChangeNotifier {
         }
       }
 
+      // Always set GRNStat = 'Y' when creating GRN against PO (regardless of quantity)
+      // Set Status = 'C' only when fully received
       final updatePoQuery = '''
       UPDATE PoHeader 
       SET Status = '${isFullyReceived ? 'C' : 'O'}', 
-          DelStat = '${isFullyReceived ? 'Y' : 'N'}'
+          GRNStat = 'Y'
       WHERE PoNumber = '${order.poNumber}' AND CmpyCode = '${order.companyCode}'
       ''';
 
       print('Updating PO status...');
       await _sqlConnection.writeData(updatePoQuery);
       print('PO status updated');
+
+      Navigator.pop(context);
+      fetchPurchaseOrders();
 
       AppAlerts.appToast(message: "GRN $nextGrnNumber posted successfully");
     } catch (e, stackTrace) {
@@ -526,10 +554,14 @@ class PurchaseOrderProvider with ChangeNotifier {
       final isUnique =
           await isSerialUnique(itemCode: itemCode, serialNo: serialNo);
       if (!isUnique) {
-        AppAlerts.appToast(
+        return AppAlerts.appToast(
             message: 'Serial number $serialNo already exists in another item');
-        throw Exception(
-            'Serial number $serialNo already exists in another item');
+      }
+
+      if (item.qtyReceived >= item.qtyOrdered) {
+        return AppAlerts.appToast(
+            message:
+                'Cannot add serial - would exceed Qty ordered (${item.qtyOrdered})');
       }
 
       item.qtyReceived++;

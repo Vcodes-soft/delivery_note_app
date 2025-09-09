@@ -141,8 +141,6 @@ class OrderProvider with ChangeNotifier {
     }
   }
 
-
-
   Future<void> postDeliveryNote(BuildContext context, String soNumber) async {
     validationMessage = "";
     isValidForPosting = true;
@@ -159,8 +157,11 @@ class OrderProvider with ChangeNotifier {
       return;
     }
 
-    // Validate each item's stock and quantities
-    for (var item in order.items) {
+    // Filter items to only those with qtyIssued > 0 for validation
+    final itemsToProcess = order.items.where((item) => item.qtyIssued > 0).toList();
+
+    // Validate each item's stock and quantities (only for items with qtyIssued > 0)
+    for (var item in itemsToProcess) {
       if (!item.nonInventory) {
         if (item.stockQty < item.qtyIssued) {
           isValidForPosting = false;
@@ -185,7 +186,7 @@ class OrderProvider with ChangeNotifier {
         // Check for duplicate serial numbers in the database (ItemCode + SerialNo combination)
         for (var serial in item.serials) {
           final checkSerialQuery = '''
-          SELECT COUNT(*) as count FROM InvDetailSerials_DN 
+          SELECT COUNT(*) as count FROM InvDetailSerials 
           WHERE CmpyCode = '$companyCode' AND ItemCode = '${item.itemCode}' AND SerialNo = '${serial.serialNo}'
         ''';
 
@@ -207,6 +208,13 @@ class OrderProvider with ChangeNotifier {
       return;
     }
 
+    // Check if there are any items with qtyIssued > 0 to process
+    if (itemsToProcess.isEmpty) {
+      setLoading(false);
+      AppAlerts.appToast(message: "No items with quantity issued to process");
+      return;
+    }
+
     try {
       String nextDnNumber = await _getNextDnNumber();
 
@@ -225,7 +233,7 @@ class OrderProvider with ChangeNotifier {
         curCode: 'AED',
         exRate: 1,
         dnType: 'D',
-        qty: order.items
+        qty: itemsToProcess
             .fold(0.0, (double sum, item) => sum + item.qtyIssued)
             .round(),
         dTime: TimeOfDay.now(),
@@ -277,9 +285,9 @@ class OrderProvider with ChangeNotifier {
       await _sqlConnection.writeData(headerQuery);
       print('Header posted successfully with DN: $nextDnNumber');
 
-      // Post items
-      for (var item in order.items) {
-        final bsno = order.items.indexOf(item) + 1;
+      // Post items with qtyIssued > 0
+      int bsno = 1;
+      for (var item in itemsToProcess) {
         final detail = DeliveryNoteDetail(
           cmpyCode: order.companyCode,
           dnNumber: deliveryNoteHeader.dnNumber,
@@ -379,7 +387,6 @@ class OrderProvider with ChangeNotifier {
 
         // Post serial numbers
         if (item.serialYN && item.serials.isNotEmpty) {
-
           for (var serial in item.serials) {
             final serialDetail = InventoryDetailSerialNo(
               cmpyCode: order.companyCode,
@@ -393,7 +400,7 @@ class OrderProvider with ChangeNotifier {
             );
 
             final serialQuery = '''
-        INSERT INTO InvDetailSerials_DN (
+        INSERT INTO InvDetailSerials (
           CmpyCode, InvNumber, Sno, ItemCode, SerialNo, SrNo, DnNumber, ReturnYN
         ) VALUES (
           '${serialDetail.cmpyCode}', 
@@ -412,9 +419,11 @@ class OrderProvider with ChangeNotifier {
             print('Serial ${serial.serialNo} posted');
           }
         }
+
+        bsno++; // Increment bsno for next item
       }
 
-      // Update SO status based on whether it's fully delivered
+      // Update SO status based on whether it's fully delivered (considering all items in the order)
       bool isFullyDelivered = true;
       for (var item in order.items) {
         if (item.qtyIssued < item.qtyOrdered) {
@@ -426,7 +435,7 @@ class OrderProvider with ChangeNotifier {
       final updateSoQuery = '''
       UPDATE SoHeader 
       SET Status = '${isFullyDelivered ? 'C' : 'O'}', 
-          DelStat = '${isFullyDelivered ? 'Y' : 'N'}'
+          DelStat = 'Y'
       WHERE SoNumber = '${order.soNumber}' AND CmpyCode = '${order.companyCode}'
       ''';
 
@@ -634,6 +643,13 @@ class OrderProvider with ChangeNotifier {
                   'Cannot add serial - would exceed available stock (${item.stockQty})');
         }
       }
+
+      if (item.qtyIssued >= item.qtyOrdered) {
+        return AppAlerts.appToast(
+            message:
+                'Cannot add serial - would exceed Qty ordered (${item.qtyOrdered})');
+      }
+
       item.qtyIssued++;
       item.addSerial(serialNo);
       notifyListeners();

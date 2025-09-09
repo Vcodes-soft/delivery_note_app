@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 import 'package:delivery_note_app/models/sales_order_model.dart';
@@ -56,7 +57,7 @@ class _SalesOrderDetailScreenState extends State<SalesOrderDetailScreen> {
               title: order.customerName,
               subtitle: 'Ref No: ${order.refNo}',
               details: [
-                'SO Date: ${order.soDate.day}-${order.soDate.month}-${order.soDate.year}',
+                'SO Date: ${DateFormat('dd-MM-yyyy').format(order.soDate)}',
                 'Salesman: ${order.salesmanName}',
                 'Location: ${order.locationCode}',
                 'Total Items: ${order.items.length}',
