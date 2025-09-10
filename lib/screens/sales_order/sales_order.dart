@@ -95,30 +95,6 @@ class _SalesOrdersScreenState extends State<SalesOrdersScreen> {
               ? provider.salesOrders
               : provider.filteredSalesOrders;
 
-          if (ordersToDisplay.isEmpty) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.assignment, size: 64, color: Colors.grey),
-                  const SizedBox(height: 16),
-                  Text(
-                    provider.searchQuery.isEmpty
-                        ? 'No sales orders found'
-                        : 'No results for "${provider.searchQuery}"',
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  const SizedBox(height: 8),
-                  ElevatedButton(
-                    onPressed: _refreshSalesOrders,
-                    style: ElevatedButton.styleFrom(backgroundColor: themeColor),
-                    child: const Text('Refresh', style: TextStyle(color: Colors.white)),
-                  ),
-                ],
-              ),
-            );
-          }
-
           return Column(
             children: [
               Padding(
@@ -145,58 +121,89 @@ class _SalesOrdersScreenState extends State<SalesOrdersScreen> {
                   ),
                 ),
               ),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    'Showing ${ordersToDisplay.length} orders',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Colors.grey.shade600,
+              if (ordersToDisplay.isEmpty)
+                Expanded(
+                  child: Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.assignment, size: 64, color: Colors.grey),
+                        const SizedBox(height: 16),
+                        Text(
+                          provider.searchQuery.isEmpty
+                              ? 'No sales orders found'
+                              : 'No results for "${provider.searchQuery}"',
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        const SizedBox(height: 8),
+                        ElevatedButton(
+                          onPressed: _refreshSalesOrders,
+                          style: ElevatedButton.styleFrom(backgroundColor: themeColor),
+                          child: const Text('Refresh', style: TextStyle(color: Colors.white)),
+                        ),
+                      ],
                     ),
                   ),
-                ),
-              ),
-              const SizedBox(height: 8),
-              Expanded(
-                child: RefreshIndicator(
-                  onRefresh: _refreshSalesOrders,
-                  edgeOffset: 20,
-                  child: ListView.separated(
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
-                    itemCount: ordersToDisplay.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 8),
-                    itemBuilder: (context, index) {
-                      final order = ordersToDisplay[index];
+                )
+              else
+                Expanded(
+                  child: Column(
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            'Showing ${ordersToDisplay.length} orders',
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: Colors.grey.shade600,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Expanded(
+                        child: RefreshIndicator(
+                          onRefresh: _refreshSalesOrders,
+                          edgeOffset: 20,
+                          child: ListView.separated(
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                            itemCount: ordersToDisplay.length,
+                            separatorBuilder: (_, __) => const SizedBox(height: 8),
+                            itemBuilder: (context, index) {
+                              final order = ordersToDisplay[index];
 
-                      return Card(
-                        color: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
+                              return Card(
+                                color: Colors.white,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                elevation: 3,
+                                margin: EdgeInsets.zero,
+                                shadowColor: isDark ? Colors.black45 : Colors.grey.withOpacity(0.2),
+                                child: ListTile(
+                                  title: Text(
+                                    order.soNumber,
+                                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                                  ),
+                                  subtitle: Text(
+                                    'Customer: ${order.customerName}',
+                                    style: const TextStyle(fontSize: 13),
+                                  ),
+                                  onTap: () => Navigator.of(context).pushNamed(
+                                    '/sales-order-detail',
+                                    arguments: order.soNumber,
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
                         ),
-                        elevation: 3,
-                        margin: EdgeInsets.zero,
-                        shadowColor: isDark ? Colors.black45 : Colors.grey.withOpacity(0.2),
-                        child: ListTile(
-                          title: Text(
-                            order.soNumber,
-                            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
-                          ),
-                          subtitle: Text(
-                            'Customer: ${order.customerName}',
-                            style: const TextStyle(fontSize: 13),
-                          ),
-                          onTap: () => Navigator.of(context).pushNamed(
-                            '/sales-order-detail',
-                            arguments: order.soNumber,
-                          ),
-                        ),
-                      );
-                    },
+                      ),
+                    ],
                   ),
                 ),
-              ),
             ],
           );
         },
