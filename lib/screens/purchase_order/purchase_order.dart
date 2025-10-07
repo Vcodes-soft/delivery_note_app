@@ -22,6 +22,7 @@ class _PurchaseOrdersScreenState extends State<PurchaseOrdersScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadPurchaseOrders();
+      _initializeSearchController();
     });
     _searchController.addListener(_onSearchChanged);
   }
@@ -30,6 +31,12 @@ class _PurchaseOrdersScreenState extends State<PurchaseOrdersScreen> {
   void dispose() {
     _searchController.dispose();
     super.dispose();
+  }
+
+  void _initializeSearchController() {
+    final provider = Provider.of<PurchaseOrderProvider>(context, listen: false);
+    // Sync the search controller with the provider's current search query
+    _searchController.text = provider.searchQuery;
   }
 
   void _onSearchChanged() {
@@ -61,6 +68,12 @@ class _PurchaseOrdersScreenState extends State<PurchaseOrdersScreen> {
     }
   }
 
+  void _clearSearch() {
+    final provider = Provider.of<PurchaseOrderProvider>(context, listen: false);
+    _searchController.clear();
+    provider.searchPurchaseOrders('');
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -70,7 +83,11 @@ class _PurchaseOrdersScreenState extends State<PurchaseOrdersScreen> {
       appBar: AppBar(
         backgroundColor: themeColor,
         leading: IconButton(
-          onPressed: () => Navigator.pop(context),
+          onPressed: () {
+            // Clear search when navigating back to prevent stale search state
+            _clearSearch();
+            Navigator.pop(context);
+          },
           icon: const Icon(Icons.arrow_back_ios, color: Colors.white, size: 18),
         ),
         title: const Text('Purchase Orders', style: TextStyle(color: Colors.white, fontSize: 16)),
@@ -110,10 +127,7 @@ class _PurchaseOrdersScreenState extends State<PurchaseOrdersScreen> {
                     suffixIcon: provider.searchQuery.isNotEmpty
                         ? IconButton(
                       icon: const Icon(Icons.clear),
-                      onPressed: () {
-                        _searchController.clear();
-                        provider.searchPurchaseOrders('');
-                      },
+                      onPressed: _clearSearch,
                     )
                         : null,
                   ),

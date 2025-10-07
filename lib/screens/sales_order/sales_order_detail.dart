@@ -94,6 +94,10 @@ class _SalesOrderDetailScreenState extends State<SalesOrderDetailScreen> {
                 ),
               )
                   : null,
+              onQuantityUpdated: (itemCode, newQuantity) {
+                Provider.of<OrderProvider>(context, listen: false)
+                    .updateItemQuantity(order.soNumber, itemCode, newQuantity);
+              },
             )),
 
             const SizedBox(height: 24),

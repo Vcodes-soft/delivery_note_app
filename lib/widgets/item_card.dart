@@ -10,6 +10,7 @@ class ItemCard extends StatefulWidget {
   final String soNumber;
   final VoidCallback? onAddLotPressed;
   final Function(double)? onQuantityChanged;
+  final Function(String, double)? onQuantityUpdated;
 
   const ItemCard({
     super.key,
@@ -17,6 +18,7 @@ class ItemCard extends StatefulWidget {
     this.soNumber = '',
     this.onAddLotPressed,
     this.onQuantityChanged,
+    this.onQuantityUpdated,
   });
 
   @override
@@ -25,6 +27,31 @@ class ItemCard extends StatefulWidget {
 
 class _ItemCardState extends State<ItemCard> {
   bool _isExpanded = false;
+  late TextEditingController _quantityController;
+
+  @override
+  void initState() {
+    super.initState();
+    bool isSalesOrderItem = widget.item is SalesOrderItem;
+    double currentQty = isSalesOrderItem
+        ? (widget.item as SalesOrderItem).qtyIssued
+        : (widget.item as PurchaseOrderItem).qtyReceived;
+    _quantityController = TextEditingController(text: currentQty.toString());
+  }
+
+  @override
+  void dispose() {
+    _quantityController.dispose();
+    super.dispose();
+  }
+
+  void _updateQuantityController() {
+    bool isSalesOrderItem = widget.item is SalesOrderItem;
+    double currentQty = isSalesOrderItem
+        ? (widget.item as SalesOrderItem).qtyIssued
+        : (widget.item as PurchaseOrderItem).qtyReceived;
+    _quantityController.text = currentQty.toString();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -36,6 +63,13 @@ class _ItemCardState extends State<ItemCard> {
     double qtyIssued = isSalesOrderItem
         ? (widget.item as SalesOrderItem).qtyIssued
         : (widget.item as PurchaseOrderItem).qtyReceived;
+    
+    // Update the text field if the quantity has changed externally
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_quantityController.text != qtyIssued.toString()) {
+        _quantityController.text = qtyIssued.toString();
+      }
+    });
 
     return Card(
       color: Colors.white,
@@ -102,13 +136,28 @@ class _ItemCardState extends State<ItemCard> {
                                   ? (widget.item as SalesOrderItem).qtyIssued--
                                   : (widget.item as PurchaseOrderItem).qtyReceived--;
                             });
+                            _updateQuantityController();
                             widget.onQuantityChanged?.call(qtyIssued - 1);
                           }
                         },
                       ),
-                      Text(
-                        '$qtyIssued',
-                        style: Theme.of(context).textTheme.bodyLarge,
+                      SizedBox(
+                        width: 60,
+                        child: TextField(
+                          controller: _quantityController,
+                          keyboardType: TextInputType.number,
+                          textAlign: TextAlign.center,
+                          style: Theme.of(context).textTheme.bodyLarge,
+                          decoration: const InputDecoration(
+                            border: OutlineInputBorder(),
+                            contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            isDense: true,
+                          ),
+                          onSubmitted: (value) {
+                            final newQty = double.tryParse(value) ?? 0;
+                            widget.onQuantityUpdated?.call(widget.item.itemCode, newQty);
+                          },
+                        ),
                       ),
                       IconButton(
                         icon: const Icon(Icons.add),
@@ -128,6 +177,7 @@ class _ItemCardState extends State<ItemCard> {
                                   ? (widget.item as SalesOrderItem).qtyIssued++
                                   : (widget.item as PurchaseOrderItem).qtyReceived++;
                             });
+                            _updateQuantityController();
                             widget.onQuantityChanged?.call(qtyIssued + 1);
                           }
                         },

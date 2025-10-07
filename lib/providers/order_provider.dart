@@ -158,7 +158,8 @@ class OrderProvider with ChangeNotifier {
     }
 
     // Filter items to only those with qtyIssued > 0 for validation
-    final itemsToProcess = order.items.where((item) => item.qtyIssued > 0).toList();
+    final itemsToProcess =
+    order.items.where((item) => item.qtyIssued > 0).toList();
 
     // Validate each item's stock and quantities (only for items with qtyIssued > 0)
     for (var item in itemsToProcess) {
@@ -186,9 +187,9 @@ class OrderProvider with ChangeNotifier {
         // Check for duplicate serial numbers in the database (ItemCode + SerialNo combination)
         for (var serial in item.serials) {
           final checkSerialQuery = '''
-          SELECT COUNT(*) as count FROM InvDetailSerials 
-          WHERE CmpyCode = '$companyCode' AND ItemCode = '${item.itemCode}' AND SerialNo = '${serial.serialNo}'
-        ''';
+        SELECT COUNT(*) as count FROM InvDetailSerials 
+        WHERE CmpyCode = '$companyCode' AND ItemCode = '${item.itemCode}' AND SerialNo = '${serial.serialNo}'
+      ''';
 
           final resultString = await _sqlConnection.getData(checkSerialQuery);
           final count = int.tryParse(resultString) ?? 0;
@@ -226,13 +227,13 @@ class OrderProvider with ChangeNotifier {
         customerCode: order.customerCode,
         salesmanCode: order.salesmanCode,
         soNumber: order.soNumber,
-        refNo: order.refNo,
+        refNo: order.refNo.toString() == "null" ? "" : order.refNo.toString(),
         status: 'O',
         invStat: 'N',
         discount: 0,
         curCode: 'AED',
         exRate: 1,
-        dnType: 'D',
+        dnType: 'S',
         qty: itemsToProcess
             .fold(0.0, (double sum, item) => sum + item.qtyIssued)
             .round(),
@@ -261,7 +262,7 @@ class OrderProvider with ChangeNotifier {
       '${deliveryNoteHeader.customerCode}', 
       '${deliveryNoteHeader.salesmanCode}',
       '${deliveryNoteHeader.soNumber}', 
-      '${deliveryNoteHeader.refNo}', 
+      '${deliveryNoteHeader.refNo.toString() == "null" ? "" : deliveryNoteHeader.refNo.toString()}', 
       '${deliveryNoteHeader.status}', 
       '${deliveryNoteHeader.invStat}', 
       ${deliveryNoteHeader.discount}, 
@@ -287,6 +288,8 @@ class OrderProvider with ChangeNotifier {
 
       // Post items with qtyIssued > 0
       int bsno = 1;
+      int globalSerialSno = 1; // Global counter for serial numbers across all items
+
       for (var item in itemsToProcess) {
         final detail = DeliveryNoteDetail(
           cmpyCode: order.companyCode,
@@ -373,51 +376,47 @@ class OrderProvider with ChangeNotifier {
 
         // Update SoDetail table with issued quantity
         final updateSoDetailQuery = '''
-        UPDATE SoDetail 
-        SET QtyIssued = QtyIssued + ${item.qtyIssued}, 
-            SrNo = '${bsno.toString()}'
-        WHERE CmpyCode = '${order.companyCode}' 
-          AND SoNumber = '${order.soNumber}' 
-          AND ItemCode = '${item.itemCode}' 
+      UPDATE SoDetail 
+      SET QtyIssued = QtyIssued + ${item.qtyIssued}, 
+          SrNo = '${bsno.toString()}'
+      WHERE CmpyCode = '${order.companyCode}' 
+        AND SoNumber = '${order.soNumber}' 
+        AND ItemCode = '${item.itemCode}' 
       ''';
 
         print('Updating SoDetail for item ${item.itemCode}...');
         await _sqlConnection.writeData(updateSoDetailQuery);
         print('SoDetail updated for item ${item.itemCode}');
 
-        // Post serial numbers
+        // Post serial numbers with continuous Sno across all items
         if (item.serialYN && item.serials.isNotEmpty) {
+          final values = <String>[];
+
           for (var serial in item.serials) {
-            final serialDetail = InventoryDetailSerialNo(
-              cmpyCode: order.companyCode,
-              invNumber: '',
-              sno: serial.sNo.toString(),
-              itemCode: item.itemCode,
-              serialNo: serial.serialNo,
-              srNo: bsno.toString(),
-              dnNumber: deliveryNoteHeader.dnNumber,
-              returnYN: false,
-            );
-
-            final serialQuery = '''
-        INSERT INTO InvDetailSerials (
-          CmpyCode, InvNumber, Sno, ItemCode, SerialNo, SrNo, DnNumber, ReturnYN
-        ) VALUES (
-          '${serialDetail.cmpyCode}', 
-          '${serialDetail.invNumber}', 
-          '${serialDetail.sno}', 
-          '${serialDetail.itemCode}', 
-          '${serialDetail.serialNo}', 
-          '${serialDetail.srNo}', 
-          '${serialDetail.dnNumber}', 
-          ${serialDetail.returnYN ? 1 : 0}
-        )
-        ''';
-
-            print('Posting serial ${serial.serialNo}...');
-            await _sqlConnection.writeData(serialQuery);
-            print('Serial ${serial.serialNo} posted');
+            final value = '''
+      ('${order.companyCode}', 
+       '${deliveryNoteHeader.dnNumber}', 
+       '${globalSerialSno.toString()}', 
+       '${item.itemCode}', 
+       '${serial.serialNo}', 
+       '${bsno.toString()}', 
+       '${deliveryNoteHeader.dnNumber}', 
+       ${false ? 1 : 0})
+    ''';
+            values.add(value);
+            globalSerialSno++; // Increment global serial counter
           }
+
+          final batchQuery = '''
+    INSERT INTO InvDetailSerials (
+      CmpyCode, InvNumber, Sno, ItemCode, SerialNo, SrNo, DnNumber, ReturnYN
+    ) VALUES 
+    ${values.join(', ')}
+  ''';
+
+          print('Posting ${item.serials.length} serials...');
+          await _sqlConnection.writeData(batchQuery);
+          print('All serials posted');
         }
 
         bsno++; // Increment bsno for next item
@@ -433,11 +432,11 @@ class OrderProvider with ChangeNotifier {
       }
 
       final updateSoQuery = '''
-      UPDATE SoHeader 
-      SET Status = '${isFullyDelivered ? 'C' : 'O'}', 
-          DelStat = 'Y'
-      WHERE SoNumber = '${order.soNumber}' AND CmpyCode = '${order.companyCode}'
-      ''';
+    UPDATE SoHeader 
+    SET Status = '${isFullyDelivered ? 'C' : 'O'}', 
+        DelStat = 'Y'
+    WHERE SoNumber = '${order.soNumber}' AND CmpyCode = '${order.companyCode}'
+    ''';
 
       print('Updating SO status...');
       await _sqlConnection.writeData(updateSoQuery);
@@ -462,7 +461,6 @@ class OrderProvider with ChangeNotifier {
       setLoading(false);
     }
   }
-
 
   Future<String> _getNextDnNumber() async {
     final query = '''
@@ -610,6 +608,82 @@ class OrderProvider with ChangeNotifier {
     }
   }
 
+  // Add this method to your OrderProvider class
+  bool hasDuplicateSerialsInItem({
+    required String soNumber,
+    required String itemCode,
+  }) {
+    final order = getSalesOrderById(soNumber);
+    if (order == null) return false;
+
+    final item = order.items.firstWhere(
+          (i) => i.itemCode == itemCode,
+      orElse: () => throw Exception('Item not found'),
+    );
+
+    final serialNumbers = item.serials.map((s) => s.serialNo).toList();
+    final uniqueSerialNumbers = serialNumbers.toSet();
+
+    return serialNumbers.length != uniqueSerialNumbers.length;
+  }
+
+  // Modify this method to return a map with serial numbers and their positions
+  Map<String, List<int>> getDuplicateSerialsWithPositions({
+    required String soNumber,
+    required String itemCode,
+  }) {
+    final order = getSalesOrderById(soNumber);
+    if (order == null) return {};
+
+    final item = order.items.firstWhere(
+          (i) => i.itemCode == itemCode,
+      orElse: () => throw Exception('Item not found'),
+    );
+
+    final serialNumbers = item.serials.map((s) => s.serialNo).toList();
+    final serialPositions = <String, List<int>>{};
+
+    // Track positions of each serial number
+    for (int i = 0; i < serialNumbers.length; i++) {
+      final serial = serialNumbers[i];
+      if (!serialPositions.containsKey(serial)) {
+        serialPositions[serial] = [];
+      }
+      serialPositions[serial]!.add(i + 1); // +1 to make it 1-based index
+    }
+
+    // Return only duplicates (serial numbers that appear more than once)
+    return serialPositions..removeWhere((key, value) => value.length <= 1);
+  }
+
+// Also add this method to get duplicate serials for display
+  List<String> getDuplicateSerialsInItem({
+    required String soNumber,
+    required String itemCode,
+  }) {
+    final order = getSalesOrderById(soNumber);
+    if (order == null) return [];
+
+    final item = order.items.firstWhere(
+          (i) => i.itemCode == itemCode,
+      orElse: () => throw Exception('Item not found'),
+    );
+
+    final serialNumbers = item.serials.map((s) => s.serialNo).toList();
+    final duplicates = <String>[];
+    final seen = <String>{};
+
+    for (final serial in serialNumbers) {
+      if (seen.contains(serial)) {
+        duplicates.add(serial);
+      } else {
+        seen.add(serial);
+      }
+    }
+
+    return duplicates;
+  }
+
   Future<void> addSerialToItem({
     required String soNumber,
     required String itemCode,
@@ -658,6 +732,7 @@ class OrderProvider with ChangeNotifier {
     }
   }
 
+
   void removeSerialFromItem({
     required String soNumber,
     required String itemCode,
@@ -672,19 +747,27 @@ class OrderProvider with ChangeNotifier {
         orElse: () => throw Exception('Item not found'),
       );
 
-      final initialLength = item.serials.length;
-      item.serials.removeWhere((s) => s.serialNo == serialNo);
-
-      if (item.serials.length < initialLength) {
-        item.qtyIssued -= 1;
+      // Find the serial to remove
+      final serialIndex =
+          item.serials.indexWhere((s) => s.serialNo == serialNo);
+      if (serialIndex == -1) {
+        throw Exception('Serial number not found');
       }
 
+      // Remove the serial
+      item.serials.removeAt(serialIndex);
+
+      // Decrement the quantity issued
+      item.qtyIssued -= 1;
+
+      // Recalculate positions (serial numbers)
       for (int i = 0; i < item.serials.length; i++) {
         item.serials[i] = ItemSerial(
           serialNo: item.serials[i].serialNo,
           sNo: i + 1,
         );
       }
+
       notifyListeners();
     } catch (e) {
       throw Exception('Failed to remove serial: ${e.toString()}');
@@ -694,6 +777,36 @@ class OrderProvider with ChangeNotifier {
   void resetValidation() {
     isValidForPosting = true;
     validationMessage = '';
+    notifyListeners();
+  }
+
+  // Method to update item quantity directly via text field
+  void updateItemQuantity(String soNumber, String itemCode, double newQuantity) {
+    final order = getSalesOrderById(soNumber);
+    if (order == null) return;
+
+    final item = order.items.firstWhere(
+      (i) => i.itemCode == itemCode,
+      orElse: () => throw Exception('Item not found'),
+    );
+    
+    // Validate the new quantity
+    if (newQuantity < 0) {
+      AppAlerts.appToast(message: 'Quantity cannot be negative');
+      return;
+    }
+    
+    if (newQuantity > item.qtyOrdered) {
+      AppAlerts.appToast(message: 'Cannot exceed ordered quantity (${item.qtyOrdered})');
+      return;
+    }
+    
+    if (!item.nonInventory && newQuantity > item.stockQty) {
+      AppAlerts.appToast(message: 'Insufficient stock (${item.stockQty} available)');
+      return;
+    }
+    
+    item.qtyIssued = newQuantity;
     notifyListeners();
   }
 }

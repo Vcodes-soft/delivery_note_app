@@ -206,6 +206,59 @@ class _AddLotScreenState extends State<AddLotScreen> {
           actions: [
             TextButton(
               onPressed: () async {
+                // Check for duplicates before proceeding
+                final hasDuplicates = orderProvider.hasDuplicateSerialsInItem(
+                  soNumber: widget.soNumber,
+                  itemCode: widget.itemCode,
+                );
+
+                if (hasDuplicates) {
+                  // Show alert about duplicates with positions
+                  final duplicatesWithPositions =
+                      orderProvider.getDuplicateSerialsWithPositions(
+                    soNumber: widget.soNumber,
+                    itemCode: widget.itemCode,
+                  );
+
+                  await showDialog(
+                    context: context,
+                    builder: (context) => AlertDialog(
+                      title: const Text('Duplicate Serial Numbers'),
+                      content: SingleChildScrollView(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                                'The following serial numbers are duplicated:'),
+                            const SizedBox(height: 10),
+                            ...duplicatesWithPositions.entries.map((entry) {
+                              final serial = entry.key;
+                              final positions = entry.value;
+                              return Text(
+                                '• $serial (positions: ${positions.join(', ')})',
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.bold),
+                              );
+                            }).toList(),
+                            const SizedBox(height: 10),
+                            const Text(
+                                'Please remove duplicates before proceeding.'),
+                          ],
+                        ),
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(context),
+                          child: const Text('OK'),
+                        ),
+                      ],
+                    ),
+                  );
+                  return; // Don't close the screen
+                }
+
+                // If no duplicates, proceed to close
                 _stopContinuousScanning();
                 Navigator.of(context).pop();
               },
@@ -361,7 +414,9 @@ class _AddLotScreenState extends State<AddLotScreen> {
                     },
                   ),
                 ),
-                onSubmitted: (value) => _serialController.text.isNotEmpty ? _addSerial(context, value):(){},
+                onSubmitted: (value) => _serialController.text.isNotEmpty
+                    ? _addSerial(context, value)
+                    : () {},
               ),
 
               const SizedBox(height: 20),
@@ -652,14 +707,66 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
             },
             icon: Icon(Icons.arrow_back_ios)),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.done),
+          TextButton(
             onPressed: () async {
+              // Check for duplicates before proceeding
+              final hasDuplicates = orderProvider.hasDuplicateSerialsInItem(
+                poNumber: widget.poNumber,
+                itemCode: widget.itemCode,
+              );
+
+              if (hasDuplicates) {
+                // Show alert about duplicates with positions
+                final duplicatesWithPositions =
+                orderProvider.getDuplicateSerialsWithPositions(
+                  poNumber: widget.poNumber,
+                  itemCode: widget.itemCode,
+                );
+
+                await showDialog(
+                  context: context,
+                  builder: (context) => AlertDialog(
+                    title: const Text('Duplicate Serial Numbers'),
+                    content: SingleChildScrollView(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                              'The following serial numbers are duplicated:'),
+                          const SizedBox(height: 10),
+                          ...duplicatesWithPositions.entries.map((entry) {
+                            final serial = entry.key;
+                            final positions = entry.value;
+                            return Text(
+                              '• $serial (positions: ${positions.join(', ')})',
+                              style: const TextStyle(
+                                  fontWeight: FontWeight.bold),
+                            );
+                          }).toList(),
+                          const SizedBox(height: 10),
+                          const Text(
+                              'Please remove duplicates before proceeding.'),
+                        ],
+                      ),
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(context),
+                        child: const Text('OK'),
+                      ),
+                    ],
+                  ),
+                );
+                return; // Don't close the screen
+              }
+
+              // If no duplicates, proceed to close
               _stopContinuousScanning();
               Navigator.of(context).pop();
             },
-            tooltip: 'Done',
-          ),
+            child: const Text("Done"),
+          )
         ],
       ),
       body: SingleChildScrollView(
@@ -809,7 +916,9 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
                   },
                 ),
               ),
-              onSubmitted: (value) => _serialController.text.isNotEmpty ? _addSerial(context, value):(){},
+              onSubmitted: (value) => _serialController.text.isNotEmpty
+                  ? _addSerial(context, value)
+                  : () {},
             ),
 
             const SizedBox(height: 20),

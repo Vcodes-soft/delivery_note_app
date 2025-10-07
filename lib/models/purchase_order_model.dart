@@ -32,7 +32,7 @@ class PurchaseOrder {
       poDate: DateTime.parse(json['SODate'].toString()),
       supplierCode: json['SupplierCode'].toString(),
       supplierName: json['SupplierName'].toString(),
-      refNo: json['RefNo'].toString(),
+      refNo: json['RefNo'].toString() == "null" ? "" : json['RefNo'].toString(),
       items: [PurchaseOrderItem.fromJson(json)],
       isPending: true,
     );
@@ -68,16 +68,15 @@ class PurchaseOrderItem {
 
   factory PurchaseOrderItem.fromJson(Map<String, dynamic> json) {
     return PurchaseOrderItem(
-      itemCode: json['ItemCode'].toString(),
-      itemName: json['ItemName'].toString(),
-      unit: json['Unit'].toString(),
-      unitPrice: double.tryParse(json['UnitPrice'].toString()) ?? 0.0,
-      qtyOrdered: double.parse(json['QtyOrdered'].toString()),
-      nonInventory: json['NonInventory'] == 1,
-      serialYN: json['SerialYN'] == 1,
-      qtyReceived: 0,
-      serials: []
-    );
+        itemCode: json['ItemCode'].toString(),
+        itemName: json['ItemName'].toString(),
+        unit: json['Unit'].toString(),
+        unitPrice: double.tryParse(json['UnitPrice'].toString()) ?? 0.0,
+        qtyOrdered: double.parse(json['QtyOrdered'].toString()),
+        nonInventory: json['NonInventory'] == 1,
+        serialYN: json['SerialYN'] == 1,
+        qtyReceived: 0,
+        serials: []);
   }
 
   bool hasSerial(String serialNo) {

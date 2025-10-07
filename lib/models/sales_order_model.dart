@@ -34,7 +34,7 @@ class SalesOrder {
       customerName: json['CustomerName'].toString(),
       salesmanCode: json['SalesmanCode'].toString(),
       salesmanName: json['SalesmanName'].toString(),
-      refNo: json['RefNo'].toString(),
+      refNo: json['RefNo'].toString() == "null" ? "":json['RefNo'].toString(),
       locationCode: json['loccode'].toString(),
       isPending: true, // Add your actual status logic here
       items: [

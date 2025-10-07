@@ -14,14 +14,17 @@ class PurchaseOrderDetailScreen extends StatefulWidget {
   const PurchaseOrderDetailScreen({super.key, required this.poNumber});
 
   @override
-  State<PurchaseOrderDetailScreen> createState() => _PurchaseOrderDetailScreenState();
+  State<PurchaseOrderDetailScreen> createState() =>
+      _PurchaseOrderDetailScreenState();
 }
 
 class _PurchaseOrderDetailScreenState extends State<PurchaseOrderDetailScreen> {
   @override
   void initState() {
     WidgetsBinding.instance.addPostFrameCallback((e) {
-      Provider.of<PurchaseOrderProvider>(context, listen: false).resetValidation();
+      final provider = Provider.of<PurchaseOrderProvider>(context, listen: false);
+      provider.resetValidation();
+      provider.clearAllItemSerials(widget.poNumber);
     });
     super.initState();
   }
@@ -42,8 +45,7 @@ class _PurchaseOrderDetailScreenState extends State<PurchaseOrderDetailScreen> {
               Row(
                 children: [
                   Icon(Icons.warning_amber_rounded,
-                      color: Colors.orange[700],
-                      size: 28),
+                      color: Colors.orange[700], size: 28),
                   const SizedBox(width: 12),
                   Text('Validation Required',
                       style: theme.textTheme.titleLarge?.copyWith(
@@ -76,7 +78,8 @@ class _PurchaseOrderDetailScreenState extends State<PurchaseOrderDetailScreen> {
                 child: TextButton(
                   style: TextButton.styleFrom(
                     foregroundColor: Colors.orange[700],
-                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(8),
                     ),
@@ -94,7 +97,8 @@ class _PurchaseOrderDetailScreenState extends State<PurchaseOrderDetailScreen> {
 
   String _formatValidationMessage(String rawMessage) {
     if (rawMessage.contains('\n')) {
-      return rawMessage.split('\n')
+      return rawMessage
+          .split('\n')
           .map((line) => line.trim().isNotEmpty ? '• $line' : '')
           .join('\n');
     }
@@ -104,15 +108,15 @@ class _PurchaseOrderDetailScreenState extends State<PurchaseOrderDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final Color themeColor = const Color.fromRGBO(251, 212, 18, 1.0);
-    final order =
-    Provider.of<PurchaseOrderProvider>(context).getPurchaseOrderById(widget.poNumber);
+    final provider = Provider.of<PurchaseOrderProvider>(context);
+    final order = provider.getPurchaseOrderById(widget.poNumber);
 
-    if (order == null) {
+    if (order == null || provider.isLoading) {
       return Scaffold(
         appBar: AppBar(
-        backgroundColor: themeColor,
+          backgroundColor: themeColor,
         ),
-        body: const Center(child: Text('Order not found')),
+        body: const Center(child: CircularProgressIndicator()),
       );
     }
 
@@ -125,16 +129,17 @@ class _PurchaseOrderDetailScreenState extends State<PurchaseOrderDetailScreen> {
             builder: (context, provider, _) {
               if (provider.validationMessage.isNotEmpty) {
                 return IconButton(
-                  onPressed: () => _showValidationDialog(context, provider.validationMessage),
-                  icon: const Icon(Icons.error_outline, color: Colors.redAccent),
+                  onPressed: () => _showValidationDialog(
+                      context, provider.validationMessage),
+                  icon:
+                      const Icon(Icons.error_outline, color: Colors.redAccent),
                   tooltip: 'View validation details',
                 );
               }
               return const SizedBox.shrink();
-
             },
-
-          )        ],
+          )
+        ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
@@ -158,20 +163,27 @@ class _PurchaseOrderDetailScreenState extends State<PurchaseOrderDetailScreen> {
             const SizedBox(height: 8),
             // Display all items in the order
             ...order.items.map((item) => ItemCard(
-              item: item,
-              soNumber: order.poNumber,
-              onAddLotPressed: item.serialYN
-                  ? () => showDialog(
-                context: context,
-                builder: (context) => POAddLotScreen(
-                  poNumber: order.poNumber,
-                  itemCode: item.itemCode,
-                  orderedQty: item.qtyOrdered,
-                  availableStock: item.qtyOrdered, // For PO, we use ordered qty as reference
-                ),
-              )
-                  : null,
-            )),
+                  item: item,
+                  soNumber: order.poNumber,
+                  onAddLotPressed: item.serialYN
+                      ? () {
+                          showDialog(
+                            context: context,
+                            builder: (context) => POAddLotScreen(
+                              poNumber: order.poNumber,
+                              itemCode: item.itemCode,
+                              orderedQty: item.qtyOrdered,
+                              availableStock: item
+                                  .qtyOrdered, // For PO, we use ordered qty as reference
+                            ),
+                          );
+                        }
+                      : null,
+                  onQuantityUpdated: (itemCode, newQuantity) {
+                    Provider.of<PurchaseOrderProvider>(context, listen: false)
+                        .updateItemQuantity(order.poNumber, itemCode, newQuantity);
+                  },
+                )),
             const SizedBox(height: 24),
             Center(
               child: ElevatedButton(
@@ -180,14 +192,14 @@ class _PurchaseOrderDetailScreenState extends State<PurchaseOrderDetailScreen> {
                       .postGoodsReceipt(context, widget.poNumber);
                 },
                 style: ElevatedButton.styleFrom(
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                  padding:
-                  const EdgeInsets.symmetric(horizontal: 10, vertical: 16),
-                  backgroundColor: Colors.blue[700]
-                ),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10)),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 10, vertical: 16),
+                    backgroundColor: Colors.blue[700]),
                 child: Center(
                   child: const Text('Post GRN',
-                      style: TextStyle(fontSize: 15,color: Colors.white)),
+                      style: TextStyle(fontSize: 15, color: Colors.white)),
                 ),
               ),
             ),

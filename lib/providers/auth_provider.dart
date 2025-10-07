@@ -111,15 +111,7 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
-  Future<void> removeSavedConfig() async{
-    final prefs = await SharedPreferences.getInstance();
-    prefs.clear();
-    _serverUrl = '';
-    _serverPort = '';
-    _serverUserId = '';
-    _serverPassword ='';
-    _databaseName = '';
-  }
+
 
   Future<bool> connectToServer({
     required String url,

@@ -62,7 +62,7 @@ class DeliveryNoteHeader {
       'CustomerCode': customerCode,
       'SalesmanCode': salesmanCode,
       'SoNumber': soNumber,
-      'RefNo': refNo,
+      'RefNo': refNo.toString() == "null" ?"":refNo.toString(),
       'Status': status,
       'InvStat': invStat,
       'Discount': discount,

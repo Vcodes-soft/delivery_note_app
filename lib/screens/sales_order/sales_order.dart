@@ -23,6 +23,7 @@ class _SalesOrdersScreenState extends State<SalesOrdersScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadSalesOrders();
+      _initializeSearchController();
     });
     _searchController.addListener(_onSearchChanged);
   }
@@ -31,6 +32,12 @@ class _SalesOrdersScreenState extends State<SalesOrdersScreen> {
   void dispose() {
     _searchController.dispose();
     super.dispose();
+  }
+
+  void _initializeSearchController() {
+    final provider = Provider.of<OrderProvider>(context, listen: false);
+    // Sync the search controller with the provider's current search query
+    _searchController.text = provider.searchQuery;
   }
 
   void _onSearchChanged() {
@@ -62,6 +69,12 @@ class _SalesOrdersScreenState extends State<SalesOrdersScreen> {
     }
   }
 
+  void _clearSearch() {
+    final provider = Provider.of<OrderProvider>(context, listen: false);
+    _searchController.clear();
+    provider.searchSalesOrders('');
+  }
+
   @override
   Widget build(BuildContext context) {
     final provider = Provider.of<OrderProvider>(context);
@@ -72,7 +85,11 @@ class _SalesOrdersScreenState extends State<SalesOrdersScreen> {
       appBar: AppBar(
         backgroundColor: themeColor,
         leading: IconButton(
-          onPressed: () => Navigator.pop(context),
+          onPressed: () {
+            // Clear search when navigating back to prevent stale search state
+            _clearSearch();
+            Navigator.pop(context);
+          },
           icon: const Icon(Icons.arrow_back_ios, color: Colors.white, size: 18),
         ),
         title: const Text('Sales Orders', style: TextStyle(color: Colors.white, fontSize: 16)),
@@ -112,10 +129,7 @@ class _SalesOrdersScreenState extends State<SalesOrdersScreen> {
                     suffixIcon: provider.searchQuery.isNotEmpty
                         ? IconButton(
                       icon: const Icon(Icons.clear),
-                      onPressed: () {
-                        _searchController.clear();
-                        provider.searchSalesOrders('');
-                      },
+                      onPressed: _clearSearch,
                     )
                         : null,
                   ),

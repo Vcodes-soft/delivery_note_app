@@ -1,7 +1,9 @@
 import 'package:delivery_note_app/models/users_model.dart';
+import 'package:delivery_note_app/screens/server_configuration.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:delivery_note_app/providers/auth_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key});
@@ -150,9 +152,12 @@ class _AuthScreenState extends State<AuthScreen> {
           IconButton(
             icon: const Icon(Icons.settings),
             onPressed: () {
-              // Handle server configuration
-              Provider.of<AuthProvider>(context,listen: false).removeSavedConfig();
-              Navigator.of(context).pushNamed('/');
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => ServerConfigScreen(fromLogin: true),
+                ),
+              );
             },
             tooltip: 'Server Configuration',
           ),

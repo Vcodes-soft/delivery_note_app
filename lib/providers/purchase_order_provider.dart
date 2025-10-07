@@ -183,12 +183,14 @@ class PurchaseOrderProvider with ChangeNotifier {
   Future<void> postGoodsReceipt(BuildContext context, String poNumber) async {
     validationMessage = "";
     isValidForPosting = true;
+    setLoading(true);
     final order = getPurchaseOrderById(poNumber);
     SharedPreferences prefs = await SharedPreferences.getInstance();
     final String companyCode = prefs.getString('companyCode') ?? "";
     final String username = prefs.getString("username") ?? "";
 
     if (order == null) {
+      setLoading(false);
       print('Order not found for PO: $poNumber');
       AppAlerts.appToast(message: "Order not found for PO: $poNumber");
       return;
@@ -217,9 +219,9 @@ class PurchaseOrderProvider with ChangeNotifier {
         // Check for duplicate serial numbers in the database (ItemCode + SerialNo combination)
         for (var serial in item.serials) {
           final checkSerialQuery = '''
-          SELECT COUNT(*) as count FROM GrnDetailSerials 
-          WHERE CmpyCode = '$companyCode' AND ItemCode = '${item.itemCode}' AND SerialNo = '${serial.serialNo}'
-        ''';
+        SELECT COUNT(*) as count FROM GrnDetailSerials 
+        WHERE CmpyCode = '$companyCode' AND ItemCode = '${item.itemCode}' AND SerialNo = '${serial.serialNo}'
+      ''';
 
           final resultString = await _sqlConnection.getData(checkSerialQuery);
           final count = int.tryParse(resultString) ?? 0;
@@ -234,7 +236,7 @@ class PurchaseOrderProvider with ChangeNotifier {
 
     // If validation fails, show error message and return
     if (!isValidForPosting) {
-      notifyListeners();
+      setLoading(false);
       AppAlerts.appToast(
           message: "GRN validation failed: \n $validationMessage");
       return;
@@ -242,6 +244,7 @@ class PurchaseOrderProvider with ChangeNotifier {
 
     // Check if there are any items with qtyReceived > 0 to process
     if (itemsToProcess.isEmpty) {
+      setLoading(false);
       AppAlerts.appToast(message: "No items with quantity received to process");
       return;
     }
@@ -257,7 +260,7 @@ class PurchaseOrderProvider with ChangeNotifier {
         'LocCode': order.locationCode,
         'Dates': DateFormat('yyyy-MM-dd').format(DateTime.now()),
         'SupplierCode': order.supplierCode,
-        'RefNo': order.refNo,
+        'RefNo': order.refNo.toString() == "null"?"":order.refNo.toString(),
         'InvStat': 'N', // Not invoiced
         'Status': 'O', // Open status
         'CurCode': 'AED',
@@ -275,30 +278,30 @@ class PurchaseOrderProvider with ChangeNotifier {
 
       // Post header
       final headerQuery = '''
-    INSERT INTO GrnHeader (
-      CmpyCode, GrnNumber, LocCode, Dates, SupplierCode, RefNo, InvStat, 
-      Status, CurCode, ExRate, Discount, GrnType, Qty, DTime, LoginUser, 
-      MType, GrnType1
-    ) VALUES (
-      '${grnHeader['CmpyCode']}', 
-      '${grnHeader['GrnNumber']}', 
-      '${grnHeader['LocCode']}', 
-      CONVERT(DATETIME, '${grnHeader['Dates']}', 120), 
-      '${grnHeader['SupplierCode']}', 
-      '${grnHeader['RefNo']}', 
-      '${grnHeader['InvStat']}', 
-      '${grnHeader['Status']}', 
-      '${grnHeader['CurCode']}', 
-      ${grnHeader['ExRate']}, 
-      ${grnHeader['Discount']}, 
-      '${grnHeader['GrnType']}', 
-      ${grnHeader['Qty']}, 
-      '${grnHeader['DTime']}', 
-      '${grnHeader['LoginUser']}', 
-      '${grnHeader['MType']}', 
-      '${grnHeader['GrnType1']}'
-    )
-    ''';
+  INSERT INTO GrnHeader (
+    CmpyCode, GrnNumber, LocCode, Dates, SupplierCode, RefNo, InvStat, 
+    Status, CurCode, ExRate, Discount, GrnType, Qty, DTime, LoginUser, 
+    MType, GrnType1
+  ) VALUES (
+    '${grnHeader['CmpyCode']}', 
+    '${grnHeader['GrnNumber']}', 
+    '${grnHeader['LocCode']}', 
+    CONVERT(DATETIME, '${grnHeader['Dates']}', 120), 
+    '${grnHeader['SupplierCode']}', 
+    '${grnHeader['RefNo'].toString() == "null"?"":grnHeader['RefNo'].toString()}', 
+    '${grnHeader['InvStat']}', 
+    '${grnHeader['Status']}', 
+    '${grnHeader['CurCode']}', 
+    ${grnHeader['ExRate']}, 
+    ${grnHeader['Discount']}, 
+    '${grnHeader['GrnType']}', 
+    ${grnHeader['Qty']}, 
+    '${grnHeader['DTime']}', 
+    '${grnHeader['LoginUser']}', 
+    '${grnHeader['MType']}', 
+    '${grnHeader['GrnType1']}'
+  )
+  ''';
 
       print('Posting GRN header with number: $nextGrnNumber...');
       await _sqlConnection.writeData(headerQuery);
@@ -306,6 +309,8 @@ class PurchaseOrderProvider with ChangeNotifier {
 
       // 3. Create and post GRNDetails for each item with qtyReceived > 0
       int bsno = 1;
+      int globalSerialSno = 1; // Global counter for serial numbers across all items
+
       for (var item in itemsToProcess) {
         final detail = {
           'CmpyCode': companyCode,
@@ -339,40 +344,40 @@ class PurchaseOrderProvider with ChangeNotifier {
         };
 
         final detailQuery = '''
-      INSERT INTO GrnDetail (
-        CmpyCode, GrnNumber, LocCode, Sno, ItemCode, Barcode, Description, 
-        Unit, QtyOrdered, QtyReceived, QtyFree, UnitPrice, GrossTotal, 
-        AvgCost, ProjectCode, AnalysisCode, SrNo, PoNumber, DiscountP, 
-        Discount, NetAmount, NetPurchase, Bsno, TaxCode, TaxPercentage, BinCode
-      ) VALUES (
-        '${detail['CmpyCode']}', 
-        '${detail['GrnNumber']}', 
-        '${detail['LocCode']}', 
-        ${detail['Sno']}, 
-        '${detail['ItemCode']}', 
-        ${detail['Barcode'] != null ? "'${detail['Barcode']}'" : 'NULL'}, 
-        '${detail['Description']}',
-        '${detail['Unit']}', 
-        ${detail['QtyOrdered']}, 
-        ${detail['QtyReceived']}, 
-        ${detail['QtyFree']}, 
-        ${detail['UnitPrice']}, 
-        ${detail['GrossTotal']}, 
-        ${detail['AvgCost']}, 
-        ${detail['ProjectCode'] != null ? "'${detail['ProjectCode']}'" : 'NULL'}, 
-        ${detail['AnalysisCode'] != null ? "'${detail['AnalysisCode']}'" : 'NULL'}, 
-        ${detail['SrNo'] != null ? "'${detail['SrNo']}'" : 'NULL'}, 
-        '${detail['PoNumber']}', 
-        ${detail['DiscountP']},
-        ${detail['Discount']}, 
-        ${detail['NetAmount']}, 
-        ${detail['NetPurchase']}, 
-        ${detail['Bsno'] != null ? "'${detail['Bsno']}'" : 'NULL'}, 
-        ${detail['TaxCode'] != null ? "'${detail['TaxCode']}'" : 'NULL'}, 
-        ${detail['TaxPercentage']},
-        ${detail['BinCode'] != null ? "'${detail['BinCode']}'" : 'NULL'}
-      )
-      ''';
+    INSERT INTO GrnDetail (
+      CmpyCode, GrnNumber, LocCode, Sno, ItemCode, Barcode, Description, 
+      Unit, QtyOrdered, QtyReceived, QtyFree, UnitPrice, GrossTotal, 
+      AvgCost, ProjectCode, AnalysisCode, SrNo, PoNumber, DiscountP, 
+      Discount, NetAmount, NetPurchase, Bsno, TaxCode, TaxPercentage, BinCode
+    ) VALUES (
+      '${detail['CmpyCode']}', 
+      '${detail['GrnNumber']}', 
+      '${detail['LocCode']}', 
+      ${detail['Sno']}, 
+      '${detail['ItemCode']}', 
+      ${detail['Barcode'] != null ? "'${detail['Barcode']}'" : 'NULL'}, 
+      '${detail['Description']}',
+      '${detail['Unit']}', 
+      ${detail['QtyOrdered']}, 
+      ${detail['QtyReceived']}, 
+      ${detail['QtyFree']}, 
+      ${detail['UnitPrice']}, 
+      ${detail['GrossTotal']}, 
+      ${detail['AvgCost']}, 
+      ${detail['ProjectCode'] != null ? "'${detail['ProjectCode']}'" : 'NULL'}, 
+      ${detail['AnalysisCode'] != null ? "'${detail['AnalysisCode']}'" : 'NULL'}, 
+      ${detail['SrNo'] != null ? "'${detail['SrNo']}'" : 'NULL'}, 
+      '${detail['PoNumber']}', 
+      ${detail['DiscountP']},
+      ${detail['Discount']}, 
+      ${detail['NetAmount']}, 
+      ${detail['NetPurchase']}, 
+      ${detail['Bsno'] != null ? "'${detail['Bsno']}'" : 'NULL'}, 
+      ${detail['TaxCode'] != null ? "'${detail['TaxCode']}'" : 'NULL'}, 
+      ${detail['TaxPercentage']},
+      ${detail['BinCode'] != null ? "'${detail['BinCode']}'" : 'NULL'}
+    )
+    ''';
 
         print('Posting detail for item ${item.itemCode}...');
         await _sqlConnection.writeData(detailQuery);
@@ -380,53 +385,48 @@ class PurchaseOrderProvider with ChangeNotifier {
 
         // Update SoDetail table with issued quantity
         final updateSoDetailQuery = '''
-        UPDATE PoDetail 
-        SET QtyReceived = QtyReceived + ${item.qtyReceived}, 
-            SrNo = '${bsno.toString()}'
-        WHERE CmpyCode = '${order.companyCode}' 
-          AND PoNumber = '${order.poNumber}' 
-          AND ItemCode = '${item.itemCode}' 
-      ''';
+      UPDATE PoDetail 
+      SET QtyReceived = QtyReceived + ${item.qtyReceived}, 
+          SrNo = '${bsno.toString()}'
+      WHERE CmpyCode = '${order.companyCode}' 
+        AND PoNumber = '${order.poNumber}' 
+        AND ItemCode = '${item.itemCode}' 
+    ''';
 
         print('Updating SoDetail for item ${item.itemCode}...');
         await _sqlConnection.writeData(updateSoDetailQuery);
         print('SoDetail updated for item ${item.itemCode}');
 
-        // 4. Post serial numbers if item is serialized
+        // 4. Post serial numbers if item is serialized with continuous Sno across all items
         if (item.serialYN && item.serials.isNotEmpty) {
+          final values = <String>[];
+
           for (var serial in item.serials) {
-            final serialDetail = {
-              'CmpyCode': companyCode,
-              'GrnNumber': nextGrnNumber,
-              'VbNumber': '', // Will be invoice number if available
-              'Sno': serial.sNo.toString(),
-              'ItemCode': item.itemCode,
-              'SerialNo': serial.serialNo,
-              'SrNo': bsno.toString(),
-              'DocType': 'P', // Purchase type
-              'ReturnYN': false,
-            };
-
-            final serialQuery = '''
-          INSERT INTO GrnDetailSerials (
-            CmpyCode, GrnNumber, VbNumber, Sno, ItemCode, SerialNo, SrNo, DocType, ReturnYN
-          ) VALUES (
-            '${serialDetail['CmpyCode']}', 
-            '${serialDetail['GrnNumber']}', 
-            '${serialDetail['VbNumber']}', 
-            '${serialDetail['Sno']}', 
-            '${serialDetail['ItemCode']}', 
-            '${serialDetail['SerialNo']}', 
-            '${serialDetail['SrNo']}', 
-            '${serialDetail['DocType']}', 
-            ${serialDetail['ReturnYN'] == true ? 1 : 0}
-          )
-          ''';
-
-            print('Posting serial ${serial.serialNo}...');
-            await _sqlConnection.writeData(serialQuery);
-            print('Serial ${serial.serialNo} posted');
+            final value = '''
+    ('$companyCode', 
+     '$nextGrnNumber', 
+     '', 
+     '${globalSerialSno.toString()}', 
+     '${item.itemCode}', 
+     '${serial.serialNo}', 
+     '${bsno.toString()}', 
+     'P', 
+     ${false ? 1 : 0})
+  ''';
+            values.add(value);
+            globalSerialSno++; // Increment global serial counter
           }
+
+          final batchQuery = '''
+  INSERT INTO GrnDetailSerials (
+    CmpyCode, GrnNumber, VbNumber, Sno, ItemCode, SerialNo, SrNo, DocType, ReturnYN
+  ) VALUES 
+  ${values.join(', ')}
+''';
+
+          print('Posting ${item.serials.length} GRN serials...');
+          await _sqlConnection.writeData(batchQuery);
+          print('All GRN serials posted');
         }
 
         bsno++; // Increment bsno for next item
@@ -444,11 +444,11 @@ class PurchaseOrderProvider with ChangeNotifier {
       // Always set GRNStat = 'Y' when creating GRN against PO (regardless of quantity)
       // Set Status = 'C' only when fully received
       final updatePoQuery = '''
-      UPDATE PoHeader 
-      SET Status = '${isFullyReceived ? 'C' : 'O'}', 
-          GRNStat = 'Y'
-      WHERE PoNumber = '${order.poNumber}' AND CmpyCode = '${order.companyCode}'
-      ''';
+    UPDATE PoHeader 
+    SET Status = '${isFullyReceived ? 'C' : 'O'}', 
+        GRNStat = 'Y'
+    WHERE PoNumber = '${order.poNumber}' AND CmpyCode = '${order.companyCode}'
+    ''';
 
       print('Updating PO status...');
       await _sqlConnection.writeData(updatePoQuery);
@@ -459,13 +459,15 @@ class PurchaseOrderProvider with ChangeNotifier {
 
       AppAlerts.appToast(message: "GRN $nextGrnNumber posted successfully");
     } catch (e, stackTrace) {
+      setLoading(false);
       print('ERROR in postGoodsReceipt:');
       print('Message: $e');
       print('Stack trace: $stackTrace');
       AppAlerts.appToast(message: "Failed to post GRN: ${e.toString()}");
+    } finally {
+      setLoading(false);
     }
   }
-
 
   Future<String> getNextGrnNumber() async {
     final query = '''
@@ -582,34 +584,139 @@ class PurchaseOrderProvider with ChangeNotifier {
       if (order == null) throw Exception('Order not found');
 
       final item = order.items.firstWhere(
-        (i) => i.itemCode == itemCode,
+            (i) => i.itemCode == itemCode,
         orElse: () => throw Exception('Item not found'),
       );
 
-      final initialLength = item.serials.length;
-      item.serials.removeWhere((s) => s.serialNo == serialNo);
-
-      // Only decrement if a serial was actually removed
-      if (item.serials.length < initialLength) {
-        item.qtyReceived -= 1;
+      // Find the serial to remove
+      final serialIndex = item.serials.indexWhere((s) => s.serialNo == serialNo);
+      if (serialIndex == -1) {
+        throw Exception('Serial number not found');
       }
 
-      // Recalculate positions
+      // Remove the serial
+      item.serials.removeAt(serialIndex);
+
+      // Decrement the quantity received
+      item.qtyReceived -= 1;
+
+      // Recalculate positions (serial numbers)
       for (int i = 0; i < item.serials.length; i++) {
         item.serials[i] = ItemSerial(
           serialNo: item.serials[i].serialNo,
           sNo: i + 1,
         );
       }
+
       notifyListeners();
     } catch (e) {
       throw Exception('Failed to remove serial: ${e.toString()}');
     }
   }
 
+  resetQtyRecieved(
+      {
+        required String poNumber,
+        required String itemCode,
+      }
+      ){
+    final order = getPurchaseOrderById(poNumber);
+    if (order == null) throw Exception('Order not found');
+    final item = order.items.firstWhere(
+          (i) => i.itemCode == itemCode,
+      orElse: () => throw Exception('Item not found'),
+    );
+    item.qtyReceived = 287;
+  }
+
+  // Add this method to your OrderProvider class
+  bool hasDuplicateSerialsInItem({
+    required String poNumber,
+    required String itemCode,
+  }) {
+    final order = getPurchaseOrderById(poNumber);
+    if (order == null) return false;
+
+    final item = order.items.firstWhere(
+          (i) => i.itemCode == itemCode,
+      orElse: () => throw Exception('Item not found'),
+    );
+
+    final serialNumbers = item.serials.map((s) => s.serialNo).toList();
+    final uniqueSerialNumbers = serialNumbers.toSet();
+
+    return serialNumbers.length != uniqueSerialNumbers.length;
+  }
+
+  // Modify this method to return a map with serial numbers and their positions
+  Map<String, List<int>> getDuplicateSerialsWithPositions({
+    required String poNumber,
+    required String itemCode,
+  }) {
+    final order = getPurchaseOrderById(poNumber);
+    if (order == null) return {};
+
+    final item = order.items.firstWhere(
+          (i) => i.itemCode == itemCode,
+      orElse: () => throw Exception('Item not found'),
+    );
+
+    final serialNumbers = item.serials.map((s) => s.serialNo).toList();
+    final serialPositions = <String, List<int>>{};
+
+    // Track positions of each serial number
+    for (int i = 0; i < serialNumbers.length; i++) {
+      final serial = serialNumbers[i];
+      if (!serialPositions.containsKey(serial)) {
+        serialPositions[serial] = [];
+      }
+      serialPositions[serial]!.add(i + 1); // +1 to make it 1-based index
+    }
+
+    // Return only duplicates (serial numbers that appear more than once)
+    return serialPositions..removeWhere((key, value) => value.length <= 1);
+  }
+
   void resetValidation() {
     isValidForPosting = true;
     validationMessage = '';
+    notifyListeners();
+  }
+
+  // Method to clear all item serials for a specific purchase order
+  void clearAllItemSerials(String poNumber) {
+    final order = getPurchaseOrderById(poNumber);
+    if (order == null) return;
+
+    for (var item in order.items) {
+      item.serials.clear();
+      item.qtyReceived = 0;
+    }
+    notifyListeners();
+  }
+
+  // Method to update item quantity directly via text field
+  void updateItemQuantity(String poNumber, String itemCode, double newQuantity) {
+    final order = getPurchaseOrderById(poNumber);
+    if (order == null) return;
+
+    final item = order.items.firstWhere(
+      (i) => i.itemCode == itemCode,
+      orElse: () => throw Exception('Item not found'),
+    );
+    
+    // Validate the new quantity
+    if (newQuantity < 0) {
+      AppAlerts.appToast(message: 'Quantity cannot be negative');
+      return;
+    }
+    
+    if (newQuantity > item.qtyOrdered) {
+      AppAlerts.appToast(message: 'Cannot exceed ordered quantity (${item.qtyOrdered})');
+      return;
+    }
+    
+    item.qtyReceived = newQuantity;
     notifyListeners();
   }
 }
