@@ -112,7 +112,8 @@ class _ServerConfigScreenState extends State<ServerConfigScreen> {
             Navigator.of(context).pushReplacementNamed('/auth');
           }
         } else {
-          _showToastMessage("Connection Failed", Colors.redAccent);
+          final errorMessage = authProvider.lastConnectionError ?? "Connection Failed";
+          _showToastMessage(errorMessage, Colors.redAccent);
         }
       } catch (e) {
         _showToastMessage(e.toString(), Colors.redAccent);

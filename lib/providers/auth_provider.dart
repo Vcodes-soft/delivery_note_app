@@ -14,6 +14,7 @@ class AuthProvider with ChangeNotifier {
   String? _serverPassword;
   String? _databaseName;
   bool _isServerConnected = false;
+  String? _lastConnectionError;
   final _sqlConnection = MssqlConnection.getInstance();
 
   String? get username => _username;
@@ -26,6 +27,7 @@ class AuthProvider with ChangeNotifier {
   String? get databaseName => _databaseName;
   bool get isAuthenticated => _username != null;
   bool get isServerConnected => _isServerConnected;
+  String? get lastConnectionError => _lastConnectionError;
 
   Future<void> loadServerConfig(BuildContext context) async {
     final prefs = await SharedPreferences.getInstance();
@@ -102,10 +104,16 @@ class AuthProvider with ChangeNotifier {
       );
 
       _isServerConnected = connected;
+      if (!connected) {
+        _lastConnectionError = 'Failed to connect to server';
+      } else {
+        _lastConnectionError = null;
+      }
       notifyListeners();
       return connected;
     } catch (e) {
       _isServerConnected = false;
+      _lastConnectionError = e.toString();
       notifyListeners();
       return false;
     }
@@ -120,6 +128,20 @@ class AuthProvider with ChangeNotifier {
     required String password,
     required String database,
   }) async {
+    // Disconnect from any existing connection first
+    try {
+      if (_isServerConnected) {
+        await _sqlConnection.disconnect();
+        _isServerConnected = false;
+      }
+    } catch (e) {
+      print('Error disconnecting from previous server: $e');
+    }
+
+    // Clear old user data when connecting to a new server
+    _allUsers = [];
+    _lastConnectionError = null;
+
     // Save to shared preferences
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('serverUrl', url);
@@ -141,9 +163,11 @@ class AuthProvider with ChangeNotifier {
       // Test connection with a simple query
       try {
         await _sqlConnection.getData("SELECT 1");
+        _lastConnectionError = null;
         return true;
       } catch (e) {
         _isServerConnected = false;
+        _lastConnectionError = 'Connection test failed: ${e.toString()}';
         notifyListeners();
         return false;
       }
@@ -204,12 +228,15 @@ class AuthProvider with ChangeNotifier {
     _username = null;
     _password = null;
     _location = null;
+    _companyCode = "";
+    _allUsers = []; // Clear the users list on logout
+    
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('username');
     await prefs.remove('password');
     await prefs.remove('companyCode',);
     await prefs.remove('location');
-    Navigator.pushNamedAndRemoveUntil(context, '/auth',(route) => false);
     notifyListeners();
+    Navigator.pushNamedAndRemoveUntil(context, '/auth',(route) => false);
   }
 }

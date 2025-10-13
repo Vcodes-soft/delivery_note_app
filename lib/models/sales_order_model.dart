@@ -40,12 +40,13 @@ class SalesOrder {
       items: [
         SalesOrderItem(
           itemCode: json['ItemCode'].toString(),
-          itemName: json['Description'].toString(),
+          itemName: json['ItemName'].toString(),
           unit: json['Unit'].toString(),
           qtyOrdered: double.parse(json['QtyOrdered'].toString()),
           stockQty: double.parse(json['StockQty'].toString()),
           nonInventory: json['NonInventory'].toString() == '1',
           serialYN: json['SerialYN'].toString() == '1',
+          soQty: double.tryParse(json['SOQty']?.toString() ?? '0') ?? 0,
           qtyIssued: 0,
         )
       ],
@@ -57,12 +58,13 @@ class SalesOrder {
     items.add(
         SalesOrderItem(
           itemCode: json['ItemCode'].toString(),
-          itemName: json['Description'].toString(),
+          itemName: json['ItemName'].toString(),
           unit: json['Unit'].toString(),
           qtyOrdered: double.parse(json['QtyRemain'].toString()),
           stockQty: double.parse(json['StockQty'].toString()),
           nonInventory: json['NonInventory'].toString() == '1',
           serialYN: json['SerialYN'].toString() == '1',
+          soQty: double.tryParse(json['SOQty']?.toString() ?? '0') ?? 0,
           qtyIssued: 0,
         )
     );
@@ -81,6 +83,7 @@ class SalesOrderItem {
   final double stockQty;
   final bool nonInventory;
   final bool serialYN;
+  final double soQty;
   final List<ItemSerial> serials; // Track serial numbers for this item
 
   SalesOrderItem({
@@ -92,6 +95,7 @@ class SalesOrderItem {
     required this.stockQty,
     required this.nonInventory,
     required this.serialYN,
+    this.soQty = 0,
     List<ItemSerial>? serials,
   }) : serials = serials ?? [];
 

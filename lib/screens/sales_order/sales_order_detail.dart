@@ -26,7 +26,12 @@ class _SalesOrderDetailScreenState extends State<SalesOrderDetailScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final provider = Provider.of<OrderProvider>(context, listen: false);
       provider.resetValidation();
-      provider.fetchSalesOrderDetails(widget.soNumber);
+      // Only fetch if order doesn't exist or has no items loaded
+      // This preserves scanned serials when coming back from add lot screen
+      final existingOrder = provider.getSalesOrderById(widget.soNumber);
+      if (existingOrder == null || existingOrder.items.isEmpty) {
+        provider.fetchSalesOrderDetails(widget.soNumber);
+      }
     });
   }
 

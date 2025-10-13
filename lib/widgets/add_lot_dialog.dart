@@ -26,6 +26,7 @@ class AddLotScreen extends StatefulWidget {
 class _AddLotScreenState extends State<AddLotScreen> {
   final TextEditingController _serialController = TextEditingController();
   final TextEditingController _editSerialController = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
   bool _isScanning = false;
   bool _isExpanded = false;
   String? _editingSerialNo;
@@ -37,6 +38,26 @@ class _AddLotScreenState extends State<AddLotScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         _startContinuousScanning();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    _serialController.dispose();
+    _editSerialController.dispose();
+    super.dispose();
+  }
+
+  void _scrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients && mounted) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
       }
     });
   }
@@ -110,6 +131,7 @@ class _AddLotScreenState extends State<AddLotScreen> {
       );
       if (mounted) {
         _serialController.clear();
+        _scrollToBottom();
       }
     } catch (e) {
       if (mounted) {
@@ -183,6 +205,67 @@ class _AddLotScreenState extends State<AddLotScreen> {
     }
   }
 
+  // Method to validate duplicates and handle navigation
+  Future<bool> _validateAndNavigateBack(BuildContext context) async {
+    final orderProvider = Provider.of<OrderProvider>(context, listen: false);
+    
+    // Check for duplicates before proceeding
+    final hasDuplicates = orderProvider.hasDuplicateSerialsInItem(
+      soNumber: widget.soNumber,
+      itemCode: widget.itemCode,
+    );
+
+    if (hasDuplicates) {
+      // Show alert about duplicates with positions
+      final duplicatesWithPositions =
+          orderProvider.getDuplicateSerialsWithPositions(
+        soNumber: widget.soNumber,
+        itemCode: widget.itemCode,
+      );
+
+      await showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Duplicate Serial Numbers'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                    'The following serial numbers are duplicated:'),
+                const SizedBox(height: 10),
+                ...duplicatesWithPositions.entries.map((entry) {
+                  final serial = entry.key;
+                  final positions = entry.value;
+                  return Text(
+                    '• $serial (positions: ${positions.join(', ')})',
+                    style: const TextStyle(
+                        fontWeight: FontWeight.bold),
+                  );
+                }).toList(),
+                const SizedBox(height: 10),
+                const Text(
+                    'Please remove duplicates before proceeding.'),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+      return false; // Don't allow navigation
+    }
+
+    // If no duplicates, allow navigation
+    await _stopContinuousScanning();
+    return true;
+  }
+
   @override
   Widget build(BuildContext context) {
     final orderProvider = Provider.of<OrderProvider>(context);
@@ -194,79 +277,42 @@ class _AddLotScreenState extends State<AddLotScreen> {
 
     return PopScope(
       canPop: false,
+      onPopInvoked: (bool didPop) async {
+        if (didPop) return;
+        
+        // Validate before allowing back navigation
+        final canNavigate = await _validateAndNavigateBack(context);
+        if (canNavigate && context.mounted) {
+          Navigator.of(context).pop();
+        }
+      },
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Scan Serial Numbers'),
           leading: IconButton(
               onPressed: () async {
-                _stopContinuousScanning();
-                Navigator.of(context).pop();
+                // Validate before allowing back navigation
+                final canNavigate = await _validateAndNavigateBack(context);
+                if (canNavigate && context.mounted) {
+                  Navigator.of(context).pop();
+                }
               },
               icon: Icon(Icons.arrow_back_ios)),
           actions: [
             TextButton(
               onPressed: () async {
-                // Check for duplicates before proceeding
-                final hasDuplicates = orderProvider.hasDuplicateSerialsInItem(
-                  soNumber: widget.soNumber,
-                  itemCode: widget.itemCode,
-                );
-
-                if (hasDuplicates) {
-                  // Show alert about duplicates with positions
-                  final duplicatesWithPositions =
-                      orderProvider.getDuplicateSerialsWithPositions(
-                    soNumber: widget.soNumber,
-                    itemCode: widget.itemCode,
-                  );
-
-                  await showDialog(
-                    context: context,
-                    builder: (context) => AlertDialog(
-                      title: const Text('Duplicate Serial Numbers'),
-                      content: SingleChildScrollView(
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                                'The following serial numbers are duplicated:'),
-                            const SizedBox(height: 10),
-                            ...duplicatesWithPositions.entries.map((entry) {
-                              final serial = entry.key;
-                              final positions = entry.value;
-                              return Text(
-                                '• $serial (positions: ${positions.join(', ')})',
-                                style: const TextStyle(
-                                    fontWeight: FontWeight.bold),
-                              );
-                            }).toList(),
-                            const SizedBox(height: 10),
-                            const Text(
-                                'Please remove duplicates before proceeding.'),
-                          ],
-                        ),
-                      ),
-                      actions: [
-                        TextButton(
-                          onPressed: () => Navigator.pop(context),
-                          child: const Text('OK'),
-                        ),
-                      ],
-                    ),
-                  );
-                  return; // Don't close the screen
+                // Validate before allowing back navigation
+                final canNavigate = await _validateAndNavigateBack(context);
+                if (canNavigate && context.mounted) {
+                  Navigator.of(context).pop();
                 }
-
-                // If no duplicates, proceed to close
-                _stopContinuousScanning();
-                Navigator.of(context).pop();
               },
               child: const Text("Done"),
             ),
           ],
         ),
         body: SingleChildScrollView(
+          controller: _scrollController,
           padding: const EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -364,25 +410,42 @@ class _AddLotScreenState extends State<AddLotScreen> {
                         ),
                       ),
                       const SizedBox(width: 16),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            _isScanning
-                                ? 'Scanner is active'
-                                : 'Scanner is ready',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: _isScanning ? Colors.green : Colors.grey,
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _isScanning
+                                  ? 'Scanner is active'
+                                  : 'Scanner is ready',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: _isScanning ? Colors.green : Colors.grey,
+                              ),
                             ),
+                            Text(
+                              _isScanning
+                                  ? 'Scanning for serial numbers...'
+                                  : 'Tap to scan',
+                              style: const TextStyle(fontSize: 12),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: Colors.blue[700],
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(
+                          '${item!.serials.length}',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
                           ),
-                          Text(
-                            _isScanning
-                                ? 'Scanning for serial numbers...'
-                                : 'Tap to scan',
-                            style: const TextStyle(fontSize: 12),
-                          ),
-                        ],
+                        ),
                       ),
                     ],
                   ),
@@ -526,6 +589,7 @@ class POAddLotScreen extends StatefulWidget {
 class _POAddLotScreenState extends State<POAddLotScreen> {
   final TextEditingController _serialController = TextEditingController();
   final TextEditingController _editSerialController = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
   bool _isScanning = false;
   bool _isExpanded = false;
   String? _editingSerialNo;
@@ -536,6 +600,26 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         _startContinuousScanning();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    _serialController.dispose();
+    _editSerialController.dispose();
+    super.dispose();
+  }
+
+  void _scrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients && mounted) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
       }
     });
   }
@@ -613,6 +697,7 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
       );
       if (mounted) {
         _serialController.clear();
+        _scrollToBottom();
       }
     } catch (e) {
       if (mounted) {
@@ -688,6 +773,67 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
     }
   }
 
+  // Method to validate duplicates and handle navigation
+  Future<bool> _validateAndNavigateBack(BuildContext context) async {
+    final orderProvider = Provider.of<PurchaseOrderProvider>(context, listen: false);
+    
+    // Check for duplicates before proceeding
+    final hasDuplicates = orderProvider.hasDuplicateSerialsInItem(
+      poNumber: widget.poNumber,
+      itemCode: widget.itemCode,
+    );
+
+    if (hasDuplicates) {
+      // Show alert about duplicates with positions
+      final duplicatesWithPositions =
+          orderProvider.getDuplicateSerialsWithPositions(
+        poNumber: widget.poNumber,
+        itemCode: widget.itemCode,
+      );
+
+      await showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Duplicate Serial Numbers'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                    'The following serial numbers are duplicated:'),
+                const SizedBox(height: 10),
+                ...duplicatesWithPositions.entries.map((entry) {
+                  final serial = entry.key;
+                  final positions = entry.value;
+                  return Text(
+                    '• $serial (positions: ${positions.join(', ')})',
+                    style: const TextStyle(
+                        fontWeight: FontWeight.bold),
+                  );
+                }).toList(),
+                const SizedBox(height: 10),
+                const Text(
+                    'Please remove duplicates before proceeding.'),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+      return false; // Don't allow navigation
+    }
+
+    // If no duplicates, allow navigation
+    await _stopContinuousScanning();
+    return true;
+  }
+
   @override
   Widget build(BuildContext context) {
     final orderProvider = Provider.of<PurchaseOrderProvider>(context);
@@ -697,79 +843,44 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
       orElse: () => throw Exception('Item not found'),
     );
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Scan Serial Numbers'),
-        leading: IconButton(
-            onPressed: () async {
-              _stopContinuousScanning();
-              Navigator.of(context).pop();
-            },
-            icon: Icon(Icons.arrow_back_ios)),
-        actions: [
-          TextButton(
-            onPressed: () async {
-              // Check for duplicates before proceeding
-              final hasDuplicates = orderProvider.hasDuplicateSerialsInItem(
-                poNumber: widget.poNumber,
-                itemCode: widget.itemCode,
-              );
-
-              if (hasDuplicates) {
-                // Show alert about duplicates with positions
-                final duplicatesWithPositions =
-                orderProvider.getDuplicateSerialsWithPositions(
-                  poNumber: widget.poNumber,
-                  itemCode: widget.itemCode,
-                );
-
-                await showDialog(
-                  context: context,
-                  builder: (context) => AlertDialog(
-                    title: const Text('Duplicate Serial Numbers'),
-                    content: SingleChildScrollView(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                              'The following serial numbers are duplicated:'),
-                          const SizedBox(height: 10),
-                          ...duplicatesWithPositions.entries.map((entry) {
-                            final serial = entry.key;
-                            final positions = entry.value;
-                            return Text(
-                              '• $serial (positions: ${positions.join(', ')})',
-                              style: const TextStyle(
-                                  fontWeight: FontWeight.bold),
-                            );
-                          }).toList(),
-                          const SizedBox(height: 10),
-                          const Text(
-                              'Please remove duplicates before proceeding.'),
-                        ],
-                      ),
-                    ),
-                    actions: [
-                      TextButton(
-                        onPressed: () => Navigator.pop(context),
-                        child: const Text('OK'),
-                      ),
-                    ],
-                  ),
-                );
-                return; // Don't close the screen
-              }
-
-              // If no duplicates, proceed to close
-              _stopContinuousScanning();
-              Navigator.of(context).pop();
-            },
-            child: const Text("Done"),
-          )
-        ],
-      ),
+    return PopScope(
+      canPop: false,
+      onPopInvoked: (bool didPop) async {
+        if (didPop) return;
+        
+        // Validate before allowing back navigation
+        final canNavigate = await _validateAndNavigateBack(context);
+        if (canNavigate && context.mounted) {
+          Navigator.of(context).pop();
+        }
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Scan Serial Numbers'),
+          leading: IconButton(
+              onPressed: () async {
+                // Validate before allowing back navigation
+                final canNavigate = await _validateAndNavigateBack(context);
+                if (canNavigate && context.mounted) {
+                  Navigator.of(context).pop();
+                }
+              },
+              icon: Icon(Icons.arrow_back_ios)),
+          actions: [
+            TextButton(
+              onPressed: () async {
+                // Validate before allowing back navigation
+                final canNavigate = await _validateAndNavigateBack(context);
+                if (canNavigate && context.mounted) {
+                  Navigator.of(context).pop();
+                }
+              },
+              child: const Text("Done"),
+            )
+          ],
+        ),
       body: SingleChildScrollView(
+        controller: _scrollController,
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -866,25 +977,42 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
                       ),
                     ),
                     const SizedBox(width: 16),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          _isScanning
-                              ? 'Scanner is active'
-                              : 'Scanner is ready',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: _isScanning ? Colors.green : Colors.grey,
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _isScanning
+                                ? 'Scanner is active'
+                                : 'Scanner is ready',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: _isScanning ? Colors.green : Colors.grey,
+                            ),
                           ),
+                          Text(
+                            _isScanning
+                                ? 'Scanning for serial numbers...'
+                                : 'Tap to scan',
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Colors.blue[700],
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        '${item!.serials.length}',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
                         ),
-                        Text(
-                          _isScanning
-                              ? 'Scanning for serial numbers...'
-                              : 'Tap to scan',
-                          style: const TextStyle(fontSize: 12),
-                        ),
-                      ],
+                      ),
                     ),
                   ],
                 ),
@@ -1000,6 +1128,8 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
           ],
         ),
       ),
-    );
+        ),
+      );
+
   }
 }

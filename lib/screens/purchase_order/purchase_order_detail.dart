@@ -21,12 +21,13 @@ class PurchaseOrderDetailScreen extends StatefulWidget {
 class _PurchaseOrderDetailScreenState extends State<PurchaseOrderDetailScreen> {
   @override
   void initState() {
+    super.initState();
     WidgetsBinding.instance.addPostFrameCallback((e) {
       final provider = Provider.of<PurchaseOrderProvider>(context, listen: false);
       provider.resetValidation();
-      provider.clearAllItemSerials(widget.poNumber);
+      // Don't clear serials - they should persist when coming back from add lot screen
+      // provider.clearAllItemSerials(widget.poNumber);
     });
-    super.initState();
   }
 
   void _showValidationDialog(BuildContext context, String message) {

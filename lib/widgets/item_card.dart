@@ -116,6 +116,17 @@ class _ItemCardState extends State<ItemCard> {
 
             const Divider(height: 20),
 
+            /// SO Qty / PO Qty (just above Qty Ordered)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text(
+                isSalesOrderItem
+                    ? 'SO Qty: ${(widget.item as SalesOrderItem).soQty}'
+                    : 'PO Qty: ${(widget.item as PurchaseOrderItem).poQty}',
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+            ),
+
             /// Qty Info
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,

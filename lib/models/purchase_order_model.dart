@@ -52,6 +52,7 @@ class PurchaseOrderItem {
   double qtyReceived;
   final bool nonInventory;
   final bool serialYN;
+  final double poQty;
   final List<ItemSerial> serials;
 
   PurchaseOrderItem({
@@ -63,6 +64,7 @@ class PurchaseOrderItem {
     this.qtyReceived = 0,
     required this.nonInventory,
     required this.serialYN,
+    this.poQty = 0,
     required this.serials,
   });
 
@@ -75,6 +77,7 @@ class PurchaseOrderItem {
         qtyOrdered: double.parse(json['QtyOrdered'].toString()),
         nonInventory: json['NonInventory'] == 1,
         serialYN: json['SerialYN'] == 1,
+        poQty: double.tryParse(json['PoQTY']?.toString() ?? '0') ?? 0,
         qtyReceived: 0,
         serials: []);
   }

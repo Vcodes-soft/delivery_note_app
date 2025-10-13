@@ -19,15 +19,37 @@ class _AuthScreenState extends State<AuthScreen> {
   String? _selectedLocation;
   bool _isLoading = false;
   bool _isCheckingAuth = true;
+  bool _isLoadingUserData = true;
+  bool _obscurePassword = true;
   List<User> _matchingUsers = [];
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _checkExistingAuth();
-      _loadInitialData();
+      _initializeScreen();
     });
+  }
+
+
+  void _resetForm() {
+    if (mounted) {
+      setState(() {
+        _usernameController.clear();
+        _passwordController.clear();
+        _selectedLocation = null;
+        _matchingUsers = [];
+        _obscurePassword = true;
+      });
+    }
+  }
+
+  Future<void> _initializeScreen() async {
+    await _checkExistingAuth();
+    if (mounted && !_isCheckingAuth) {
+      // Only load user data if we're staying on the login screen
+      await _loadInitialData();
+    }
   }
 
   Future<void> _checkExistingAuth() async {
@@ -43,7 +65,26 @@ class _AuthScreenState extends State<AuthScreen> {
   }
 
   Future<void> _loadInitialData() async {
-    await Provider.of<AuthProvider>(context, listen: false).fetchAllUsers();
+    try {
+      // Clear the form before loading fresh user data
+      _resetForm();
+      
+      setState(() => _isLoadingUserData = true);
+      await Provider.of<AuthProvider>(context, listen: false).fetchAllUsers();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to load user data: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoadingUserData = false);
+      }
+    }
   }
 
   @override
@@ -151,36 +192,98 @@ class _AuthScreenState extends State<AuthScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.settings),
-            onPressed: () {
-              Navigator.push(
+            onPressed: () async {
+              await Navigator.push(
                 context,
                 MaterialPageRoute(
                   builder: (context) => ServerConfigScreen(fromLogin: true),
                 ),
               );
+              // Reload data when coming back from server config
+              if (mounted) {
+                _loadInitialData();
+              }
             },
             tooltip: 'Server Configuration',
           ),
         ],
       ),
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24.0),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 400),
-            child: Card(
-              elevation: 8,
-              child: Padding(
-                padding: const EdgeInsets.all(24.0),
-                child: Form(
+      body: WillPopScope(
+        onWillPop: () async {
+          // Reload data when coming back to this screen
+          _loadInitialData();
+          return true;
+        },
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24.0),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 400),
+              child: Card(
+                elevation: 8,
+                child: Padding(
+                  padding: const EdgeInsets.all(24.0),
+                  child: Form(
                   key: _formKey,
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Image.asset("assets/logo/techsys_logo.png", height: 100),
+                      const SizedBox(height: 16),
+                      Consumer<AuthProvider>(
+                        builder: (context, authProvider, _) {
+                          final serverUrl = authProvider.serverUrl;
+                          return Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 8,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.grey.shade200,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.cloud,
+                                  size: 16,
+                                  color: authProvider.isServerConnected
+                                      ? Colors.green
+                                      : Colors.grey,
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  serverUrl != null && serverUrl.isNotEmpty
+                                      ? 'Connected to: $serverUrl'
+                                      : 'Not connected',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey.shade700,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
                       const SizedBox(height: 24),
+                      if (_isLoadingUserData) ...[
+                        const CircularProgressIndicator(),
+                        const SizedBox(height: 16),
+                        const Text(
+                          'Loading user data from database...',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.grey,
+                          ),
+                        ),
+                        const SizedBox(height: 24),
+                      ],
                       TextFormField(
                         controller: _usernameController,
+                        enabled: !_isLoadingUserData,
                         decoration: const InputDecoration(
                           labelText: 'Username',
                           prefixIcon: Icon(Icons.person),
@@ -196,10 +299,23 @@ class _AuthScreenState extends State<AuthScreen> {
                       const SizedBox(height: 16),
                       TextFormField(
                         controller: _passwordController,
-                        obscureText: true,
-                        decoration: const InputDecoration(
+                        enabled: !_isLoadingUserData,
+                        obscureText: _obscurePassword,
+                        decoration: InputDecoration(
                           labelText: 'Password',
-                          prefixIcon: Icon(Icons.lock),
+                          prefixIcon: const Icon(Icons.lock),
+                          suffixIcon: IconButton(
+                            icon: Icon(
+                              _obscurePassword
+                                  ? Icons.visibility_off
+                                  : Icons.visibility,
+                            ),
+                            onPressed: () {
+                              setState(() {
+                                _obscurePassword = !_obscurePassword;
+                              });
+                            },
+                          ),
                         ),
                         validator: (value) {
                           if (value == null || value.isEmpty) {
@@ -252,6 +368,6 @@ class _AuthScreenState extends State<AuthScreen> {
           ),
         ),
       ),
-    );
+    ));
   }
 }
