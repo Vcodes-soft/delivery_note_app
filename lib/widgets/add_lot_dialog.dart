@@ -1,8 +1,11 @@
+import 'dart:async';
 import 'package:delivery_note_app/providers/order_provider.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:delivery_note_app/providers/purchase_order_provider.dart';
 import 'package:delivery_note_app/utils/app_alerts.dart';
+import 'package:delivery_note_app/utils/app_constants.dart';
 import 'package:lottie/lottie.dart';
 
 class AddLotScreen extends StatefulWidget {
@@ -26,10 +29,16 @@ class AddLotScreen extends StatefulWidget {
 class _AddLotScreenState extends State<AddLotScreen> {
   final TextEditingController _serialController = TextEditingController();
   final TextEditingController _editSerialController = TextEditingController();
+  final TextEditingController _keystrokeScanController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+  final FocusNode _keystrokeScanFocusNode = FocusNode();
+  final FocusNode _manualEntryFocusNode = FocusNode();
+  final FocusNode _editSerialFocusNode = FocusNode();
   bool _isScanning = false;
   bool _isExpanded = false;
   String? _editingSerialNo;
+  Timer? _scanDebounceTimer;
+  bool _isProcessingScan = false;
 
   @override
   void initState() {
@@ -37,16 +46,58 @@ class _AddLotScreenState extends State<AddLotScreen> {
     // Ensure widget is mounted before starting scanning
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
-        _startContinuousScanning();
+        if (AppConstants.scanningMode == 'keystroke') {
+          _initializeKeystrokeScanning();
+        } else {
+          _startContinuousScanning();
+        }
       }
     });
   }
 
+
+  void _initializeKeystrokeScanning() {
+    // Focus the invisible text field for keystroke scanning
+    _keystrokeScanFocusNode.requestFocus();
+    SystemChannels.textInput.invokeMethod('TextInput.hide');
+
+    // Keep the field focused, but allow manual entry to take focus
+    _keystrokeScanFocusNode.addListener(() {
+      if (!_keystrokeScanFocusNode.hasFocus) {
+        Future.delayed(const Duration(milliseconds: 100), () {
+          if (mounted && !_manualEntryFocusNode.hasFocus && !_editSerialFocusNode.hasFocus) {
+            // Only regain focus if manual entry and edit are not being used
+            _keystrokeScanFocusNode.requestFocus();
+            SystemChannels.textInput.invokeMethod('TextInput.hide');
+          }
+        });
+      }
+    });
+
+    setState(() => _isScanning = true);
+  }
+
+  void _returnFocusToScanner() {
+    if (AppConstants.scanningMode == 'keystroke' && mounted) {
+      Future.delayed(const Duration(milliseconds: 100), () {
+        if (mounted && !_manualEntryFocusNode.hasFocus && !_editSerialFocusNode.hasFocus) {
+          _keystrokeScanFocusNode.requestFocus();
+          SystemChannels.textInput.invokeMethod('TextInput.hide');
+        }
+      });
+    }
+  }
+
   @override
   void dispose() {
+    _scanDebounceTimer?.cancel();
     _scrollController.dispose();
     _serialController.dispose();
     _editSerialController.dispose();
+    _keystrokeScanController.dispose();
+    _keystrokeScanFocusNode.dispose();
+    _manualEntryFocusNode.dispose();
+    _editSerialFocusNode.dispose();
     super.dispose();
   }
 
@@ -65,9 +116,11 @@ class _AddLotScreenState extends State<AddLotScreen> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final orderProvider = Provider.of<OrderProvider>(context, listen: false);
-    // Now you can safely access Provider here
-    orderProvider.addListener(_handleScanUpdate);
+    if (AppConstants.scanningMode == 'datawedge') {
+      final orderProvider = Provider.of<OrderProvider>(context, listen: false);
+      // Now you can safely access Provider here
+      orderProvider.addListener(_handleScanUpdate);
+    }
   }
 
   Future<void> _startContinuousScanning() async {
@@ -88,15 +141,23 @@ class _AddLotScreenState extends State<AddLotScreen> {
   }
 
   Future<void> _stopContinuousScanning() async {
-    final orderProvider = Provider.of<OrderProvider>(context, listen: false);
-    orderProvider.removeListener(_handleScanUpdate);
-    try {
-      await orderProvider.stopScanner();
-    } catch (e) {
-      debugPrint("Error stopping scanner: $e");
-    }
-    if (mounted) {
-      setState(() => _isScanning = false);
+    if (AppConstants.scanningMode == 'keystroke') {
+      // For keystroke mode, just unfocus the field
+      _keystrokeScanFocusNode.unfocus();
+      if (mounted) {
+        setState(() => _isScanning = false);
+      }
+    } else {
+      final orderProvider = Provider.of<OrderProvider>(context, listen: false);
+      orderProvider.removeListener(_handleScanUpdate);
+      try {
+        await orderProvider.stopScanner();
+      } catch (e) {
+        debugPrint("Error stopping scanner: $e");
+      }
+      if (mounted) {
+        setState(() => _isScanning = false);
+      }
     }
   }
 
@@ -111,13 +172,39 @@ class _AddLotScreenState extends State<AddLotScreen> {
     }
   }
 
-  void _handleScannedBarcode(BuildContext context, String barcode) async {
+  Future<void> _handleScannedBarcode(BuildContext context, String barcode) async {
     try {
       await _addSerial(context, barcode);
     } catch (e) {
       if (mounted) {
         AppAlerts.appToast(message: 'Error handling barcode: ${e.toString()}');
       }
+    }
+  }
+
+  Future<void> _processKeystrokeScan(String scannedValue) async {
+    if (_isProcessingScan || scannedValue.isEmpty) return;
+    
+    _isProcessingScan = true;
+    _scanDebounceTimer?.cancel();
+    
+    try {
+      await _handleScannedBarcode(context, scannedValue);
+      if (mounted) {
+        _keystrokeScanController.clear();
+        // Ensure focus is maintained for continuous scanning
+        Future.delayed(const Duration(milliseconds: 10), () {
+          if (mounted && !_manualEntryFocusNode.hasFocus && !_editSerialFocusNode.hasFocus) {
+            _keystrokeScanFocusNode.requestFocus();
+          }
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        AppAlerts.appToast(message: 'Error processing scan: ${e.toString()}');
+      }
+    } finally {
+      _isProcessingScan = false;
     }
   }
 
@@ -161,6 +248,14 @@ class _AddLotScreenState extends State<AddLotScreen> {
       _editingSerialNo = serialNo;
       _editSerialController.text = serialNo;
     });
+
+    // Focus on the edit field and show keyboard
+    Future.delayed(const Duration(milliseconds: 100), () {
+      if (mounted) {
+        _editSerialFocusNode.requestFocus();
+        SystemChannels.textInput.invokeMethod('TextInput.show');
+      }
+    });
   }
 
   void _cancelEditing() {
@@ -169,6 +264,9 @@ class _AddLotScreenState extends State<AddLotScreen> {
       _editingSerialNo = null;
       _editSerialController.clear();
     });
+
+    // Return focus to scanner field
+    _returnFocusToScanner();
   }
 
   void _saveEditedSerial() {
@@ -197,6 +295,9 @@ class _AddLotScreenState extends State<AddLotScreen> {
           _editingSerialNo = null;
           _editSerialController.clear();
         });
+
+        // Return focus to scanner field
+        _returnFocusToScanner();
       }
     } catch (e) {
       if (mounted) {
@@ -208,7 +309,7 @@ class _AddLotScreenState extends State<AddLotScreen> {
   // Method to validate duplicates and handle navigation
   Future<bool> _validateAndNavigateBack(BuildContext context) async {
     final orderProvider = Provider.of<OrderProvider>(context, listen: false);
-    
+
     // Check for duplicates before proceeding
     final hasDuplicates = orderProvider.hasDuplicateSerialsInItem(
       soNumber: widget.soNumber,
@@ -218,7 +319,7 @@ class _AddLotScreenState extends State<AddLotScreen> {
     if (hasDuplicates) {
       // Show alert about duplicates with positions
       final duplicatesWithPositions =
-          orderProvider.getDuplicateSerialsWithPositions(
+      orderProvider.getDuplicateSerialsWithPositions(
         soNumber: widget.soNumber,
         itemCode: widget.itemCode,
       );
@@ -271,7 +372,7 @@ class _AddLotScreenState extends State<AddLotScreen> {
     final orderProvider = Provider.of<OrderProvider>(context);
     final order = orderProvider.getSalesOrderById(widget.soNumber);
     final item = order?.items.firstWhere(
-      (i) => i.itemCode == widget.itemCode,
+          (i) => i.itemCode == widget.itemCode,
       orElse: () => throw Exception('Item not found'),
     );
 
@@ -279,7 +380,7 @@ class _AddLotScreenState extends State<AddLotScreen> {
       canPop: false,
       onPopInvoked: (bool didPop) async {
         if (didPop) return;
-        
+
         // Validate before allowing back navigation
         final canNavigate = await _validateAndNavigateBack(context);
         if (canNavigate && context.mounted) {
@@ -311,256 +412,342 @@ class _AddLotScreenState extends State<AddLotScreen> {
             ),
           ],
         ),
-        body: SingleChildScrollView(
-          controller: _scrollController,
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Item information section
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Item Details',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 18,
+        body: GestureDetector(
+          onTap: () {
+            // When user taps anywhere on the screen, return focus to scanner
+            if (AppConstants.scanningMode == 'keystroke' &&
+                !_manualEntryFocusNode.hasFocus &&
+                !_editSerialFocusNode.hasFocus) {
+              _returnFocusToScanner();
+            }
+          },
+          behavior: HitTestBehavior.translucent,
+          child: SingleChildScrollView(
+            controller: _scrollController,
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Invisible TextField for keystroke scanning
+                if (AppConstants.scanningMode == 'keystroke')
+                  SizedBox(
+                    height: 0,
+                    width: 0,
+                    child: Focus(
+                      onFocusChange: (hasFocus) {
+                        if (hasFocus) {
+                          SystemChannels.textInput.invokeMethod('TextInput.hide');
+                        }
+                      },
+                      child: TextFormField(
+                        controller: _keystrokeScanController,
+                        focusNode: _keystrokeScanFocusNode,
+                        showCursor: false,
+                        enableInteractiveSelection: false,
+                        keyboardType: TextInputType.none,
+                        decoration: const InputDecoration(
+                          border: InputBorder.none,
+                          contentPadding: EdgeInsets.zero,
                         ),
-                      ),
-                      const SizedBox(height: 8),
-                      InkWell(
-                        onTap: () {
-                          if (mounted) {
-                            setState(() {
-                              _isExpanded = !_isExpanded;
-                            });
+                        style: const TextStyle(fontSize: 0, height: 0),
+                        onChanged: (value) {
+                          // Debounce keystroke input to prevent rapid scanning issues
+                          _scanDebounceTimer?.cancel();
+                          _scanDebounceTimer = Timer(const Duration(milliseconds: 50), () {
+                            if (mounted && value.isNotEmpty) {
+                              // Check if the value ends with Enter (common in barcode scanners)
+                              if (value.endsWith('\n') || value.endsWith('\r')) {
+                                _processKeystrokeScan(value.trim());
+                              }
+                            }
+                          });
+                        },
+                        onEditingComplete: () {
+                          // This is called when Enter is pressed
+                          final scannedValue = _keystrokeScanController.text.trim();
+                          if (scannedValue.isNotEmpty && !_isProcessingScan) {
+                            _processKeystrokeScan(scannedValue);
                           }
                         },
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              item?.itemName ?? '',
-                              maxLines: _isExpanded ? null : 2,
-                              overflow: _isExpanded
-                                  ? TextOverflow.clip
-                                  : TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontSize: 16,
-                              ),
-                            ),
-                            if (!_isExpanded &&
-                                (item?.itemName.length ?? 0) > 50)
-                              const Text(
-                                'View more',
-                                style: TextStyle(
-                                  color: Colors.blue,
-                                  fontSize: 12,
-                                ),
-                              ),
-                          ],
-                        ),
+                        onFieldSubmitted: (value) {
+                          // This is also called when Enter is pressed - prevent duplicate processing
+                          final scannedValue = value.trim();
+                          if (scannedValue.isNotEmpty && !_isProcessingScan) {
+                            _processKeystrokeScan(scannedValue);
+                          }
+                        },
                       ),
-                      const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          const Text('Item Code: ',
-                              style: TextStyle(fontWeight: FontWeight.bold)),
-                          Text(item?.itemCode ?? ''),
-                        ],
-                      ),
-                      Row(
-                        children: [
-                          const Text('Ordered Qty: ',
-                              style: TextStyle(fontWeight: FontWeight.bold)),
-                          Text('${widget.orderedQty}'),
-                        ],
-                      ),
-                      Row(
-                        children: [
-                          const Text('Available Stock: ',
-                              style: TextStyle(fontWeight: FontWeight.bold)),
-                          Text('${widget.availableStock}'),
-                        ],
-                      ),
-                    ],
+                    ),
                   ),
-                ),
-              ),
 
-              const SizedBox(height: 20),
-
-              // Scanner status indicator with Lottie animation
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Row(
-                    children: [
-                      SizedBox(
-                        width: 50,
-                        height: 50,
-                        child: Lottie.asset(
-                          'assets/animated_icon/scanner.json',
-                          animate: _isScanning,
-                          repeat: _isScanning,
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              _isScanning
-                                  ? 'Scanner is active'
-                                  : 'Scanner is ready',
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: _isScanning ? Colors.green : Colors.grey,
-                              ),
-                            ),
-                            Text(
-                              _isScanning
-                                  ? 'Scanning for serial numbers...'
-                                  : 'Tap to scan',
-                              style: const TextStyle(fontSize: 12),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: Colors.blue[700],
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Text(
-                          '${item!.serials.length}',
-                          style: const TextStyle(
-                            color: Colors.white,
+                // Item information section
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Item Details',
+                          style: TextStyle(
                             fontWeight: FontWeight.bold,
-                            fontSize: 16,
+                            fontSize: 18,
                           ),
                         ),
-                      ),
-                    ],
+                        const SizedBox(height: 8),
+                        InkWell(
+                          onTap: () {
+                            if (mounted) {
+                              setState(() {
+                                _isExpanded = !_isExpanded;
+                              });
+                            }
+                          },
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                item?.itemName ?? '',
+                                maxLines: _isExpanded ? null : 2,
+                                overflow: _isExpanded
+                                    ? TextOverflow.clip
+                                    : TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                ),
+                              ),
+                              if (!_isExpanded &&
+                                  (item?.itemName.length ?? 0) > 50)
+                                const Text(
+                                  'View more',
+                                  style: TextStyle(
+                                    color: Colors.blue,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            const Text('Item Code: ',
+                                style: TextStyle(fontWeight: FontWeight.bold)),
+                            Text(item?.itemCode ?? ''),
+                          ],
+                        ),
+                        Row(
+                          children: [
+                            const Text('Ordered Qty: ',
+                                style: TextStyle(fontWeight: FontWeight.bold)),
+                            Text('${widget.orderedQty}'),
+                          ],
+                        ),
+                        Row(
+                          children: [
+                            const Text('Available Stock: ',
+                                style: TextStyle(fontWeight: FontWeight.bold)),
+                            Text('${widget.availableStock}'),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-              ),
 
-              const SizedBox(height: 20),
+                const SizedBox(height: 20),
 
-              // Manual entry section
-              const Text(
-                'Manual Entry',
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
-                ),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: _serialController,
-                decoration: InputDecoration(
-                  labelText: 'Serial Number',
-                  border: const OutlineInputBorder(),
-                  suffixIcon: IconButton(
-                    icon: const Icon(Icons.add),
-                    onPressed: () {
-                      if (_serialController.text.isNotEmpty) {
-                        _addSerial(context, _serialController.text);
-                      }
-                    },
+                // Scanner status indicator with Lottie animation
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Row(
+                      children: [
+                        SizedBox(
+                          width: 50,
+                          height: 50,
+                          child: Lottie.asset(
+                            'assets/animated_icon/scanner.json',
+                            animate: _isScanning,
+                            repeat: _isScanning,
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                _isScanning
+                                    ? 'Scanner is active'
+                                    : 'Scanner is ready',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  color: _isScanning ? Colors.green : Colors.grey,
+                                ),
+                              ),
+                              Text(
+                                _isScanning
+                                    ? 'Scanning for serial numbers...'
+                                    : 'Tap to scan',
+                                style: const TextStyle(fontSize: 12),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: Colors.blue[700],
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Text(
+                            '${item!.serials.length}',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-                onSubmitted: (value) => _serialController.text.isNotEmpty
-                    ? _addSerial(context, value)
-                    : () {},
-              ),
 
-              const SizedBox(height: 20),
+                const SizedBox(height: 20),
 
-              // Scanned serials list
-              if (item!.serials.isNotEmpty) ...[
+                // Manual entry section
                 const Text(
-                  'Scanned Serials',
+                  'Manual Entry',
                   style: TextStyle(
                     fontWeight: FontWeight.bold,
                     fontSize: 16,
                   ),
                 ),
                 const SizedBox(height: 8),
-                ListView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  itemCount: item.serials.length,
-                  itemBuilder: (context, index) {
-                    final serial = item.serials[index];
-                    if (_editingSerialNo == serial.serialNo) {
-                      return Card(
-                        child: Padding(
-                          padding: const EdgeInsets.all(8.0),
-                          child: Column(
-                            children: [
-                              TextField(
-                                controller: _editSerialController,
-                                decoration: InputDecoration(
-                                  labelText: 'Edit Serial',
-                                  border: const OutlineInputBorder(),
-                                  suffixIcon: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      IconButton(
-                                        icon: const Icon(Icons.check,
-                                            color: Colors.green),
-                                        onPressed: _saveEditedSerial,
-                                      ),
-                                      IconButton(
-                                        icon: const Icon(Icons.close,
-                                            color: Colors.red),
-                                        onPressed: _cancelEditing,
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    } else {
-                      return Card(
-                        child: ListTile(
-                          leading: Text('${index + 1}.'),
-                          title: Text(serial.serialNo),
-                          trailing: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              IconButton(
-                                icon:
-                                    const Icon(Icons.edit, color: Colors.blue),
-                                onPressed: () =>
-                                    _startEditingSerial(serial.serialNo),
-                              ),
-                              IconButton(
-                                icon:
-                                    const Icon(Icons.delete, color: Colors.red),
-                                onPressed: () =>
-                                    _removeSerial(context, serial.serialNo),
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
+                TextField(
+                  controller: _serialController,
+                  focusNode: _manualEntryFocusNode,
+                  decoration: InputDecoration(
+                    labelText: 'Serial Number',
+                    border: const OutlineInputBorder(),
+                    suffixIcon: IconButton(
+                      icon: const Icon(Icons.add),
+                      onPressed: () {
+                        if (_serialController.text.isNotEmpty) {
+                          _addSerial(context, _serialController.text);
+                          // Return focus to scanner field if in keystroke mode
+                          if (AppConstants.scanningMode == 'keystroke') {
+                            _returnFocusToScanner();
+                          }
+                        }
+                      },
+                    ),
+                  ),
+                  onTap: () {
+                    // Allow keyboard to show for manual entry
+                    if (AppConstants.scanningMode == 'keystroke') {
+                      Future.delayed(const Duration(milliseconds: 50), () {
+                        SystemChannels.textInput.invokeMethod('TextInput.show');
+                      });
+                    }
+                  },
+                  onSubmitted: (value) {
+                    if (_serialController.text.isNotEmpty) {
+                      _addSerial(context, value);
+                    }
+                    // Return focus to scanner field if in keystroke mode
+                    if (AppConstants.scanningMode == 'keystroke') {
+                      _returnFocusToScanner();
                     }
                   },
                 ),
+
+                const SizedBox(height: 20),
+
+                // Scanned serials list
+                if (item!.serials.isNotEmpty) ...[
+                  const Text(
+                    'Scanned Serials',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  ListView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: item.serials.length,
+                    itemBuilder: (context, index) {
+                      final serial = item.serials[index];
+                      if (_editingSerialNo == serial.serialNo) {
+                        return Card(
+                          child: Padding(
+                            padding: const EdgeInsets.all(8.0),
+                            child: Column(
+                              children: [
+                                TextField(
+                                  controller: _editSerialController,
+                                  focusNode: _editSerialFocusNode,
+                                  decoration: InputDecoration(
+                                    labelText: 'Edit Serial',
+                                    border: const OutlineInputBorder(),
+                                    suffixIcon: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        IconButton(
+                                          icon: const Icon(Icons.check,
+                                              color: Colors.green),
+                                          onPressed: _saveEditedSerial,
+                                        ),
+                                        IconButton(
+                                          icon: const Icon(Icons.close,
+                                              color: Colors.red),
+                                          onPressed: _cancelEditing,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  onSubmitted: (value) {
+                                    _saveEditedSerial();
+                                  },
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      } else {
+                        return Card(
+                          child: ListTile(
+                            leading: Text('${index + 1}.'),
+                            title: Text(serial.serialNo),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  icon:
+                                  const Icon(Icons.edit, color: Colors.blue),
+                                  onPressed: () =>
+                                      _startEditingSerial(serial.serialNo),
+                                ),
+                                IconButton(
+                                  icon:
+                                  const Icon(Icons.delete, color: Colors.red),
+                                  onPressed: () =>
+                                      _removeSerial(context, serial.serialNo),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      }
+                    },
+                  ),
+                ],
               ],
-            ],
+            ),
           ),
         ),
       ),
@@ -589,26 +776,75 @@ class POAddLotScreen extends StatefulWidget {
 class _POAddLotScreenState extends State<POAddLotScreen> {
   final TextEditingController _serialController = TextEditingController();
   final TextEditingController _editSerialController = TextEditingController();
+  final TextEditingController _keystrokeScanController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+  final FocusNode _keystrokeScanFocusNode = FocusNode();
+  final FocusNode _manualEntryFocusNode = FocusNode();
+  final FocusNode _editSerialFocusNode = FocusNode();
   bool _isScanning = false;
   bool _isExpanded = false;
   String? _editingSerialNo;
+  Timer? _scanDebounceTimer;
+  bool _isProcessingScan = false;
 
   @override
   void initState() {
     super.initState();
+    // Ensure widget is mounted before starting scanning
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
-        _startContinuousScanning();
+        if (AppConstants.scanningMode == 'keystroke') {
+          _initializeKeystrokeScanning();
+        } else {
+          _startContinuousScanning();
+        }
       }
     });
   }
 
+
+  void _initializeKeystrokeScanning() {
+    // Focus the invisible text field for keystroke scanning
+    _keystrokeScanFocusNode.requestFocus();
+    SystemChannels.textInput.invokeMethod('TextInput.hide');
+
+    // Keep the field focused, but allow manual entry to take focus
+    _keystrokeScanFocusNode.addListener(() {
+      if (!_keystrokeScanFocusNode.hasFocus) {
+        Future.delayed(const Duration(milliseconds: 100), () {
+          if (mounted && !_manualEntryFocusNode.hasFocus && !_editSerialFocusNode.hasFocus) {
+            // Only regain focus if manual entry and edit are not being used
+            _keystrokeScanFocusNode.requestFocus();
+            SystemChannels.textInput.invokeMethod('TextInput.hide');
+          }
+        });
+      }
+    });
+
+    setState(() => _isScanning = true);
+  }
+
+  void _returnFocusToScanner() {
+    if (AppConstants.scanningMode == 'keystroke' && mounted) {
+      Future.delayed(const Duration(milliseconds: 100), () {
+        if (mounted && !_manualEntryFocusNode.hasFocus && !_editSerialFocusNode.hasFocus) {
+          _keystrokeScanFocusNode.requestFocus();
+          SystemChannels.textInput.invokeMethod('TextInput.hide');
+        }
+      });
+    }
+  }
+
   @override
   void dispose() {
+    _scanDebounceTimer?.cancel();
     _scrollController.dispose();
     _serialController.dispose();
     _editSerialController.dispose();
+    _keystrokeScanController.dispose();
+    _keystrokeScanFocusNode.dispose();
+    _manualEntryFocusNode.dispose();
+    _editSerialFocusNode.dispose();
     super.dispose();
   }
 
@@ -627,16 +863,17 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final orderProvider = Provider.of<OrderProvider>(context, listen: false);
-    // Now you can safely access Provider here
-    orderProvider.addListener(_handleScanUpdate);
+    if (AppConstants.scanningMode == 'datawedge') {
+      final orderProvider = Provider.of<PurchaseOrderProvider>(context, listen: false);
+      // Now you can safely access Provider here
+      orderProvider.addListener(_handleScanUpdate);
+    }
   }
 
   Future<void> _startContinuousScanning() async {
     // Ensure widget is mounted before accessing Provider
     if (mounted) {
-      final orderProvider =
-          Provider.of<PurchaseOrderProvider>(context, listen: false);
+      final orderProvider = Provider.of<PurchaseOrderProvider>(context, listen: false);
       try {
         setState(() => _isScanning = true);
         await orderProvider.startScanning();
@@ -651,24 +888,30 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
   }
 
   Future<void> _stopContinuousScanning() async {
-    final orderProvider =
-        Provider.of<PurchaseOrderProvider>(context, listen: false);
-    orderProvider.removeListener(_handleScanUpdate);
-    try {
-      await orderProvider.stopScanner();
-    } catch (e) {
-      debugPrint("Error stopping scanner: $e");
-    }
-    if (mounted) {
-      setState(() => _isScanning = false);
+    if (AppConstants.scanningMode == 'keystroke') {
+      // For keystroke mode, just unfocus the field
+      _keystrokeScanFocusNode.unfocus();
+      if (mounted) {
+        setState(() => _isScanning = false);
+      }
+    } else {
+      final orderProvider = Provider.of<PurchaseOrderProvider>(context, listen: false);
+      orderProvider.removeListener(_handleScanUpdate);
+      try {
+        await orderProvider.stopScanner();
+      } catch (e) {
+        debugPrint("Error stopping scanner: $e");
+      }
+      if (mounted) {
+        setState(() => _isScanning = false);
+      }
     }
   }
 
   void _handleScanUpdate() {
     if (!mounted) return;
 
-    final orderProvider =
-        Provider.of<PurchaseOrderProvider>(context, listen: false);
+    final orderProvider = Provider.of<PurchaseOrderProvider>(context, listen: false);
     if (orderProvider.scannedBarcode != null &&
         orderProvider.scannedBarcode!.isNotEmpty) {
       _handleScannedBarcode(context, orderProvider.scannedBarcode!);
@@ -676,7 +919,7 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
     }
   }
 
-  void _handleScannedBarcode(BuildContext context, String barcode) async {
+  Future<void> _handleScannedBarcode(BuildContext context, String barcode) async {
     try {
       await _addSerial(context, barcode);
     } catch (e) {
@@ -686,9 +929,34 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
     }
   }
 
+  Future<void> _processKeystrokeScan(String scannedValue) async {
+    if (_isProcessingScan || scannedValue.isEmpty) return;
+    
+    _isProcessingScan = true;
+    _scanDebounceTimer?.cancel();
+    
+    try {
+      await _handleScannedBarcode(context, scannedValue);
+      if (mounted) {
+        _keystrokeScanController.clear();
+        // Ensure focus is maintained for continuous scanning
+        Future.delayed(const Duration(milliseconds: 10), () {
+          if (mounted && !_manualEntryFocusNode.hasFocus && !_editSerialFocusNode.hasFocus) {
+            _keystrokeScanFocusNode.requestFocus();
+          }
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        AppAlerts.appToast(message: 'Error processing scan: ${e.toString()}');
+      }
+    } finally {
+      _isProcessingScan = false;
+    }
+  }
+
   Future<void> _addSerial(BuildContext context, String serialNo) async {
-    final orderProvider =
-        Provider.of<PurchaseOrderProvider>(context, listen: false);
+    final orderProvider = Provider.of<PurchaseOrderProvider>(context, listen: false);
     try {
       await orderProvider.addSerialToItem(
         poNumber: widget.poNumber,
@@ -707,8 +975,7 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
   }
 
   void _removeSerial(BuildContext context, String serialNo) {
-    final orderProvider =
-        Provider.of<PurchaseOrderProvider>(context, listen: false);
+    final orderProvider = Provider.of<PurchaseOrderProvider>(context, listen: false);
     try {
       orderProvider.removeSerialFromItem(
         poNumber: widget.poNumber,
@@ -728,6 +995,14 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
       _editingSerialNo = serialNo;
       _editSerialController.text = serialNo;
     });
+
+    // Focus on the edit field and show keyboard
+    Future.delayed(const Duration(milliseconds: 100), () {
+      if (mounted) {
+        _editSerialFocusNode.requestFocus();
+        SystemChannels.textInput.invokeMethod('TextInput.show');
+      }
+    });
   }
 
   void _cancelEditing() {
@@ -736,6 +1011,9 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
       _editingSerialNo = null;
       _editSerialController.clear();
     });
+
+    // Return focus to scanner field
+    _returnFocusToScanner();
   }
 
   void _saveEditedSerial() {
@@ -743,8 +1021,7 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
         _editingSerialNo == null ||
         _editSerialController.text.isEmpty) return;
 
-    final orderProvider =
-        Provider.of<PurchaseOrderProvider>(context, listen: false);
+    final orderProvider = Provider.of<PurchaseOrderProvider>(context, listen: false);
     try {
       // First remove the old serial
       orderProvider.removeSerialFromItem(
@@ -765,6 +1042,9 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
           _editingSerialNo = null;
           _editSerialController.clear();
         });
+
+        // Return focus to scanner field
+        _returnFocusToScanner();
       }
     } catch (e) {
       if (mounted) {
@@ -776,7 +1056,7 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
   // Method to validate duplicates and handle navigation
   Future<bool> _validateAndNavigateBack(BuildContext context) async {
     final orderProvider = Provider.of<PurchaseOrderProvider>(context, listen: false);
-    
+
     // Check for duplicates before proceeding
     final hasDuplicates = orderProvider.hasDuplicateSerialsInItem(
       poNumber: widget.poNumber,
@@ -786,7 +1066,7 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
     if (hasDuplicates) {
       // Show alert about duplicates with positions
       final duplicatesWithPositions =
-          orderProvider.getDuplicateSerialsWithPositions(
+      orderProvider.getDuplicateSerialsWithPositions(
         poNumber: widget.poNumber,
         itemCode: widget.itemCode,
       );
@@ -839,7 +1119,7 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
     final orderProvider = Provider.of<PurchaseOrderProvider>(context);
     final order = orderProvider.getPurchaseOrderById(widget.poNumber);
     final item = order?.items.firstWhere(
-      (i) => i.itemCode == widget.itemCode,
+          (i) => i.itemCode == widget.itemCode,
       orElse: () => throw Exception('Item not found'),
     );
 
@@ -847,7 +1127,7 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
       canPop: false,
       onPopInvoked: (bool didPop) async {
         if (didPop) return;
-        
+
         // Validate before allowing back navigation
         final canNavigate = await _validateAndNavigateBack(context);
         if (canNavigate && context.mounted) {
@@ -879,257 +1159,342 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
             )
           ],
         ),
-      body: SingleChildScrollView(
-        controller: _scrollController,
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Item information section
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Item Details',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 18,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    InkWell(
-                      onTap: () {
-                        if (mounted) {
-                          setState(() {
-                            _isExpanded = !_isExpanded;
-                          });
+        body: GestureDetector(
+          onTap: () {
+            // When user taps anywhere on the screen, return focus to scanner
+            if (AppConstants.scanningMode == 'keystroke' &&
+                !_manualEntryFocusNode.hasFocus &&
+                !_editSerialFocusNode.hasFocus) {
+              _returnFocusToScanner();
+            }
+          },
+          behavior: HitTestBehavior.translucent,
+          child: SingleChildScrollView(
+            controller: _scrollController,
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Invisible TextField for keystroke scanning
+                if (AppConstants.scanningMode == 'keystroke')
+                  SizedBox(
+                    height: 0,
+                    width: 0,
+                    child: Focus(
+                      onFocusChange: (hasFocus) {
+                        if (hasFocus) {
+                          SystemChannels.textInput.invokeMethod('TextInput.hide');
                         }
                       },
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            item?.itemName ?? '',
-                            maxLines: _isExpanded ? null : 2,
-                            overflow: _isExpanded
-                                ? TextOverflow.clip
-                                : TextOverflow.ellipsis,
+                      child: TextFormField(
+                        controller: _keystrokeScanController,
+                        focusNode: _keystrokeScanFocusNode,
+                        showCursor: false,
+                        enableInteractiveSelection: false,
+                        keyboardType: TextInputType.none,
+                        decoration: const InputDecoration(
+                          border: InputBorder.none,
+                          contentPadding: EdgeInsets.zero,
+                        ),
+                        style: const TextStyle(fontSize: 0, height: 0),
+                        onChanged: (value) {
+                          // Debounce keystroke input to prevent rapid scanning issues
+                          _scanDebounceTimer?.cancel();
+                          _scanDebounceTimer = Timer(const Duration(milliseconds: 50), () {
+                            if (mounted && value.isNotEmpty) {
+                              // Check if the value ends with Enter (common in barcode scanners)
+                              if (value.endsWith('\n') || value.endsWith('\r')) {
+                                _processKeystrokeScan(value.trim());
+                              }
+                            }
+                          });
+                        },
+                        onEditingComplete: () {
+                          // This is called when Enter is pressed
+                          final scannedValue = _keystrokeScanController.text.trim();
+                          if (scannedValue.isNotEmpty && !_isProcessingScan) {
+                            _processKeystrokeScan(scannedValue);
+                          }
+                        },
+                        onFieldSubmitted: (value) {
+                          // This is also called when Enter is pressed - prevent duplicate processing
+                          final scannedValue = value.trim();
+                          if (scannedValue.isNotEmpty && !_isProcessingScan) {
+                            _processKeystrokeScan(scannedValue);
+                          }
+                        },
+                      ),
+                    ),
+                  ),
+
+                // Item information section
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Item Details',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 18,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        InkWell(
+                          onTap: () {
+                            if (mounted) {
+                              setState(() {
+                                _isExpanded = !_isExpanded;
+                              });
+                            }
+                          },
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                item?.itemName ?? '',
+                                maxLines: _isExpanded ? null : 2,
+                                overflow: _isExpanded
+                                    ? TextOverflow.clip
+                                    : TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                ),
+                              ),
+                              if (!_isExpanded && (item?.itemName.length ?? 0) > 50)
+                                const Text(
+                                  'View more',
+                                  style: TextStyle(
+                                    color: Colors.blue,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            const Text('Item Code: ',
+                                style: TextStyle(fontWeight: FontWeight.bold)),
+                            Text(item?.itemCode ?? ''),
+                          ],
+                        ),
+                        Row(
+                          children: [
+                            const Text('Ordered Qty: ',
+                                style: TextStyle(fontWeight: FontWeight.bold)),
+                            Text('${widget.orderedQty}'),
+                          ],
+                        ),
+                        Row(
+                          children: [
+                            const Text('Available Stock: ',
+                                style: TextStyle(fontWeight: FontWeight.bold)),
+                            Text('${widget.availableStock}'),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 20),
+
+                // Scanner status indicator with Lottie animation
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Row(
+                      children: [
+                        SizedBox(
+                          width: 50,
+                          height: 50,
+                          child: Lottie.asset(
+                            'assets/animated_icon/scanner.json',
+                            animate: _isScanning,
+                            repeat: _isScanning,
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                _isScanning
+                                    ? 'Scanner is active'
+                                    : 'Scanner is ready',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  color: _isScanning ? Colors.green : Colors.grey,
+                                ),
+                              ),
+                              Text(
+                                _isScanning
+                                    ? 'Scanning for serial numbers...'
+                                    : 'Tap to scan',
+                                style: const TextStyle(fontSize: 12),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: Colors.blue[700],
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Text(
+                            '${item!.serials.length}',
                             style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
                               fontSize: 16,
                             ),
                           ),
-                          if (!_isExpanded && (item?.itemName.length ?? 0) > 50)
-                            const Text(
-                              'View more',
-                              style: TextStyle(
-                                color: Colors.blue,
-                                fontSize: 12,
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        const Text('Item Code: ',
-                            style: TextStyle(fontWeight: FontWeight.bold)),
-                        Text(item?.itemCode ?? ''),
-                      ],
-                    ),
-                    Row(
-                      children: [
-                        const Text('Ordered Qty: ',
-                            style: TextStyle(fontWeight: FontWeight.bold)),
-                        Text('${widget.orderedQty}'),
-                      ],
-                    ),
-                    Row(
-                      children: [
-                        const Text('Available Stock: ',
-                            style: TextStyle(fontWeight: FontWeight.bold)),
-                        Text('${widget.availableStock}'),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 20),
-
-            // Scanner status indicator with Lottie animation
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Row(
-                  children: [
-                    SizedBox(
-                      width: 50,
-                      height: 50,
-                      child: Lottie.asset(
-                        'assets/animated_icon/scanner.json',
-                        animate: _isScanning,
-                        repeat: _isScanning,
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            _isScanning
-                                ? 'Scanner is active'
-                                : 'Scanner is ready',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: _isScanning ? Colors.green : Colors.grey,
-                            ),
-                          ),
-                          Text(
-                            _isScanning
-                                ? 'Scanning for serial numbers...'
-                                : 'Tap to scan',
-                            style: const TextStyle(fontSize: 12),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: Colors.blue[700],
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Text(
-                        '${item!.serials.length}',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
                         ),
-                      ),
+                      ],
                     ),
-                  ],
+                  ),
                 ),
-              ),
-            ),
 
-            const SizedBox(height: 20),
+                const SizedBox(height: 20),
 
-            // Manual entry section
-            const Text(
-              'Manual Entry',
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 16,
-              ),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _serialController,
-              decoration: InputDecoration(
-                labelText: 'Serial Number',
-                border: const OutlineInputBorder(),
-                suffixIcon: IconButton(
-                  icon: const Icon(Icons.add),
-                  onPressed: () {
+                // Manual entry section
+                const Text(
+                  'Manual Entry',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: _serialController,
+                  focusNode: _manualEntryFocusNode,
+                  decoration: InputDecoration(
+                    labelText: 'Serial Number',
+                    border: const OutlineInputBorder(),
+                    suffixIcon: IconButton(
+                      icon: const Icon(Icons.add),
+                      onPressed: () {
+                        if (_serialController.text.isNotEmpty) {
+                          _addSerial(context, _serialController.text);
+                          // Return focus to scanner field if in keystroke mode
+                          if (AppConstants.scanningMode == 'keystroke') {
+                            _returnFocusToScanner();
+                          }
+                        }
+                      },
+                    ),
+                  ),
+                  onTap: () {
+                    // Allow keyboard to show for manual entry
+                    if (AppConstants.scanningMode == 'keystroke') {
+                      Future.delayed(const Duration(milliseconds: 50), () {
+                        SystemChannels.textInput.invokeMethod('TextInput.show');
+                      });
+                    }
+                  },
+                  onSubmitted: (value) {
                     if (_serialController.text.isNotEmpty) {
-                      _addSerial(context, _serialController.text);
+                      _addSerial(context, value);
+                    }
+                    // Return focus to scanner field if in keystroke mode
+                    if (AppConstants.scanningMode == 'keystroke') {
+                      _returnFocusToScanner();
                     }
                   },
                 ),
-              ),
-              onSubmitted: (value) => _serialController.text.isNotEmpty
-                  ? _addSerial(context, value)
-                  : () {},
-            ),
 
-            const SizedBox(height: 20),
+                const SizedBox(height: 20),
 
-            // Scanned serials list
-            if (item!.serials.isNotEmpty) ...[
-              const Text(
-                'Scanned Serials',
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
-                ),
-              ),
-              const SizedBox(height: 8),
-              ListView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: item.serials.length,
-                itemBuilder: (context, index) {
-                  final serial = item.serials[index];
-                  if (_editingSerialNo == serial.serialNo) {
-                    return Card(
-                      child: Padding(
-                        padding: const EdgeInsets.all(8.0),
-                        child: Column(
-                          children: [
-                            TextField(
-                              controller: _editSerialController,
-                              decoration: InputDecoration(
-                                labelText: 'Edit Serial',
-                                border: const OutlineInputBorder(),
-                                suffixIcon: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    IconButton(
-                                      icon: const Icon(Icons.check,
-                                          color: Colors.green),
-                                      onPressed: _saveEditedSerial,
+                // Scanned serials list
+                if (item!.serials.isNotEmpty) ...[
+                  const Text(
+                    'Scanned Serials',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  ListView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: item.serials.length,
+                    itemBuilder: (context, index) {
+                      final serial = item.serials[index];
+                      if (_editingSerialNo == serial.serialNo) {
+                        return Card(
+                          child: Padding(
+                            padding: const EdgeInsets.all(8.0),
+                            child: Column(
+                              children: [
+                                TextField(
+                                  controller: _editSerialController,
+                                  focusNode: _editSerialFocusNode,
+                                  decoration: InputDecoration(
+                                    labelText: 'Edit Serial',
+                                    border: const OutlineInputBorder(),
+                                    suffixIcon: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        IconButton(
+                                          icon: const Icon(Icons.check,
+                                              color: Colors.green),
+                                          onPressed: _saveEditedSerial,
+                                        ),
+                                        IconButton(
+                                          icon: const Icon(Icons.close,
+                                              color: Colors.red),
+                                          onPressed: _cancelEditing,
+                                        ),
+                                      ],
                                     ),
-                                    IconButton(
-                                      icon: const Icon(Icons.close,
-                                          color: Colors.red),
-                                      onPressed: _cancelEditing,
-                                    ),
-                                  ],
+                                  ),
+                                  onSubmitted: (value) {
+                                    _saveEditedSerial();
+                                  },
                                 ),
-                              ),
+                              ],
                             ),
-                          ],
-                        ),
-                      ),
-                    );
-                  } else {
-                    return Card(
-                      child: ListTile(
-                        leading: Text('${index + 1}.'),
-                        title: Text(serial.serialNo),
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            IconButton(
-                              icon: const Icon(Icons.edit, color: Colors.blue),
-                              onPressed: () =>
-                                  _startEditingSerial(serial.serialNo),
+                          ),
+                        );
+                      } else {
+                        return Card(
+                          child: ListTile(
+                            leading: Text('${index + 1}.'),
+                            title: Text(serial.serialNo),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  icon: const Icon(Icons.edit, color: Colors.blue),
+                                  onPressed: () =>
+                                      _startEditingSerial(serial.serialNo),
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.delete, color: Colors.red),
+                                  onPressed: () =>
+                                      _removeSerial(context, serial.serialNo),
+                                ),
+                              ],
                             ),
-                            IconButton(
-                              icon: const Icon(Icons.delete, color: Colors.red),
-                              onPressed: () =>
-                                  _removeSerial(context, serial.serialNo),
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  }
-                },
-              ),
-            ],
-          ],
+                          ),
+                        );
+                      }
+                    },
+                  ),
+                ],
+              ],
+            ),
+          ),
         ),
       ),
-        ),
-      );
-
+    );
   }
 }
