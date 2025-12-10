@@ -91,7 +91,6 @@ class _AddLotScreenState extends State<AddLotScreen> {
 
   @override
   void dispose() {
-    TelegramLogger.sendLog("🗑️ [AddLotScreen] Disposing scanner (SO: ${widget.soNumber}, Item: ${widget.itemCode})");
     _scanDebounceTimer?.cancel();
     _stopContinuousScanning();
     _scrollController.dispose();
@@ -101,7 +100,6 @@ class _AddLotScreenState extends State<AddLotScreen> {
     _keystrokeScanFocusNode.dispose();
     _manualEntryFocusNode.dispose();
     _editSerialFocusNode.dispose();
-    TelegramLogger.sendLog("✅ [AddLotScreen] Scanner disposed successfully");
     super.dispose();
   }
 
@@ -132,11 +130,9 @@ class _AddLotScreenState extends State<AddLotScreen> {
     if (mounted) {
       final orderProvider = Provider.of<OrderProvider>(context, listen: false);
       try {
-        await TelegramLogger.sendLog("▶️ [AddLotScreen] Starting continuous scanning (SO: ${widget.soNumber}, Item: ${widget.itemCode})");
         setState(() => _isScanning = true);
         await orderProvider.startScanning();
         orderProvider.addListener(_handleScanUpdate);
-        await TelegramLogger.sendLog("✅ [AddLotScreen] Continuous scanning started successfully");
       } catch (e, stackTrace) {
         if (mounted) {
           setState(() => _isScanning = false);
@@ -149,14 +145,12 @@ class _AddLotScreenState extends State<AddLotScreen> {
 
   Future<void> _stopContinuousScanning() async {
     try {
-      await TelegramLogger.sendLog("⏹️ [AddLotScreen] Stopping scanning (SO: ${widget.soNumber}, Item: ${widget.itemCode})");
       if (AppConstants.scanningMode == 'keystroke') {
         // For keystroke mode, just unfocus the field
         _keystrokeScanFocusNode.unfocus();
         if (mounted) {
           setState(() => _isScanning = false);
         }
-        await TelegramLogger.sendLog("✅ [AddLotScreen] Keystroke scanning stopped");
       } else {
         final orderProvider = Provider.of<OrderProvider>(context, listen: false);
         orderProvider.removeListener(_handleScanUpdate);
@@ -169,7 +163,6 @@ class _AddLotScreenState extends State<AddLotScreen> {
         if (mounted) {
           setState(() => _isScanning = false);
         }
-        await TelegramLogger.sendLog("✅ [AddLotScreen] Continuous scanning stopped");
       }
     } catch (e, stackTrace) {
       await TelegramLogger.sendLog("❌ [AddLotScreen] Error in _stopContinuousScanning\nError: $e\nStack: $stackTrace");
@@ -443,57 +436,7 @@ class _AddLotScreenState extends State<AddLotScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Invisible TextField for keystroke scanning
-                if (AppConstants.scanningMode == 'keystroke')
-                  SizedBox(
-                    height: 0,
-                    width: 0,
-                    child: Focus(
-                      onFocusChange: (hasFocus) {
-                        if (hasFocus) {
-                          SystemChannels.textInput.invokeMethod('TextInput.hide');
-                        }
-                      },
-                      child: TextFormField(
-                        controller: _keystrokeScanController,
-                        focusNode: _keystrokeScanFocusNode,
-                        showCursor: false,
-                        enableInteractiveSelection: false,
-                        keyboardType: TextInputType.none,
-                        decoration: const InputDecoration(
-                          border: InputBorder.none,
-                          contentPadding: EdgeInsets.zero,
-                        ),
-                        style: const TextStyle(fontSize: 0, height: 0),
-                        onChanged: (value) {
-                          // Debounce keystroke input to prevent rapid scanning issues
-                          _scanDebounceTimer?.cancel();
-                          _scanDebounceTimer = Timer(const Duration(milliseconds: 50), () {
-                            if (mounted && value.isNotEmpty) {
-                              // Check if the value ends with Enter (common in barcode scanners)
-                              if (value.endsWith('\n') || value.endsWith('\r')) {
-                                _processKeystrokeScan(value.trim());
-                              }
-                            }
-                          });
-                        },
-                        onEditingComplete: () {
-                          // This is called when Enter is pressed
-                          final scannedValue = _keystrokeScanController.text.trim();
-                          if (scannedValue.isNotEmpty && !_isProcessingScan) {
-                            _processKeystrokeScan(scannedValue);
-                          }
-                        },
-                        onFieldSubmitted: (value) {
-                          // This is also called when Enter is pressed - prevent duplicate processing
-                          final scannedValue = value.trim();
-                          if (scannedValue.isNotEmpty && !_isProcessingScan) {
-                            _processKeystrokeScan(scannedValue);
-                          }
-                        },
-                      ),
-                    ),
-                  ),
+
 
                 // Item information section
                 Card(
@@ -761,6 +704,59 @@ class _AddLotScreenState extends State<AddLotScreen> {
                     },
                   ),
                 ],
+
+
+                // Invisible TextField for keystroke scanning
+                if (AppConstants.scanningMode == 'keystroke')
+                  SizedBox(
+                    height: 0,
+                    width: 0,
+                    child: Focus(
+                      onFocusChange: (hasFocus) {
+                        if (hasFocus) {
+                          SystemChannels.textInput.invokeMethod('TextInput.hide');
+                        }
+                      },
+                      child: TextFormField(
+                        controller: _keystrokeScanController,
+                        focusNode: _keystrokeScanFocusNode,
+                        showCursor: false,
+                        enableInteractiveSelection: false,
+                        keyboardType: TextInputType.none,
+                        decoration: const InputDecoration(
+                          border: InputBorder.none,
+                          contentPadding: EdgeInsets.zero,
+                        ),
+                        style: const TextStyle(fontSize: 0, height: 0),
+                        onChanged: (value) {
+                          // Debounce keystroke input to prevent rapid scanning issues
+                          _scanDebounceTimer?.cancel();
+                          _scanDebounceTimer = Timer(const Duration(milliseconds: 50), () {
+                            if (mounted && value.isNotEmpty) {
+                              // Check if the value ends with Enter (common in barcode scanners)
+                              if (value.endsWith('\n') || value.endsWith('\r')) {
+                                _processKeystrokeScan(value.trim());
+                              }
+                            }
+                          });
+                        },
+                        onEditingComplete: () {
+                          // This is called when Enter is pressed
+                          final scannedValue = _keystrokeScanController.text.trim();
+                          if (scannedValue.isNotEmpty && !_isProcessingScan) {
+                            _processKeystrokeScan(scannedValue);
+                          }
+                        },
+                        onFieldSubmitted: (value) {
+                          // This is also called when Enter is pressed - prevent duplicate processing
+                          final scannedValue = value.trim();
+                          if (scannedValue.isNotEmpty && !_isProcessingScan) {
+                            _processKeystrokeScan(scannedValue);
+                          }
+                        },
+                      ),
+                    ),
+                  ),
               ],
             ),
           ),
@@ -852,7 +848,6 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
 
   @override
   void dispose() {
-    TelegramLogger.sendLog("🗑️ [POAddLotScreen] Disposing scanner (PO: ${widget.poNumber}, Item: ${widget.itemCode})");
     _scanDebounceTimer?.cancel();
     _stopContinuousScanning();
     _scrollController.dispose();
@@ -862,7 +857,6 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
     _keystrokeScanFocusNode.dispose();
     _manualEntryFocusNode.dispose();
     _editSerialFocusNode.dispose();
-    TelegramLogger.sendLog("✅ [POAddLotScreen] Scanner disposed successfully");
     super.dispose();
   }
 
@@ -893,11 +887,9 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
     if (mounted) {
       final orderProvider = Provider.of<PurchaseOrderProvider>(context, listen: false);
       try {
-        await TelegramLogger.sendLog("▶️ [POAddLotScreen] Starting continuous scanning (PO: ${widget.poNumber}, Item: ${widget.itemCode})");
         setState(() => _isScanning = true);
         await orderProvider.startScanning();
         orderProvider.addListener(_handleScanUpdate);
-        await TelegramLogger.sendLog("✅ [POAddLotScreen] Continuous scanning started successfully");
       } catch (e, stackTrace) {
         if (mounted) {
           setState(() => _isScanning = false);
@@ -910,14 +902,12 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
 
   Future<void> _stopContinuousScanning() async {
     try {
-      await TelegramLogger.sendLog("⏹️ [POAddLotScreen] Stopping scanning (PO: ${widget.poNumber}, Item: ${widget.itemCode})");
       if (AppConstants.scanningMode == 'keystroke') {
         // For keystroke mode, just unfocus the field
         _keystrokeScanFocusNode.unfocus();
         if (mounted) {
           setState(() => _isScanning = false);
         }
-        await TelegramLogger.sendLog("✅ [POAddLotScreen] Keystroke scanning stopped");
       } else {
         final orderProvider = Provider.of<PurchaseOrderProvider>(context, listen: false);
         orderProvider.removeListener(_handleScanUpdate);
@@ -930,7 +920,6 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
         if (mounted) {
           setState(() => _isScanning = false);
         }
-        await TelegramLogger.sendLog("✅ [POAddLotScreen] Continuous scanning stopped");
       }
     } catch (e, stackTrace) {
       await TelegramLogger.sendLog("❌ [POAddLotScreen] Error in _stopContinuousScanning\nError: $e\nStack: $stackTrace");
@@ -950,9 +939,7 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
 
   Future<void> _handleScannedBarcode(BuildContext context, String barcode) async {
     try {
-      await TelegramLogger.sendLog("📷 [POAddLotScreen] Handling scanned barcode: $barcode (PO: ${widget.poNumber}, Item: ${widget.itemCode})");
       await _addSerial(context, barcode);
-      await TelegramLogger.sendLog("✅ [POAddLotScreen] Barcode handled successfully: $barcode");
     } catch (e, stackTrace) {
       if (mounted) {
         await TelegramLogger.sendLog("❌ [POAddLotScreen] Error handling barcode: $barcode\nError: $e\nStack: $stackTrace");
@@ -968,7 +955,6 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
     _scanDebounceTimer?.cancel();
     
     try {
-      await TelegramLogger.sendLog("⌨️ [POAddLotScreen] Processing keystroke scan: $scannedValue (PO: ${widget.poNumber}, Item: ${widget.itemCode})");
       await _handleScannedBarcode(context, scannedValue);
       if (mounted) {
         _keystrokeScanController.clear();
@@ -979,7 +965,6 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
           }
         });
       }
-      await TelegramLogger.sendLog("✅ [POAddLotScreen] Keystroke scan processed successfully: $scannedValue");
     } catch (e, stackTrace) {
       if (mounted) {
         await TelegramLogger.sendLog("❌ [POAddLotScreen] Error processing keystroke scan: $scannedValue\nError: $e\nStack: $stackTrace");
@@ -1210,57 +1195,7 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Invisible TextField for keystroke scanning
-                if (AppConstants.scanningMode == 'keystroke')
-                  SizedBox(
-                    height: 0,
-                    width: 0,
-                    child: Focus(
-                      onFocusChange: (hasFocus) {
-                        if (hasFocus) {
-                          SystemChannels.textInput.invokeMethod('TextInput.hide');
-                        }
-                      },
-                      child: TextFormField(
-                        controller: _keystrokeScanController,
-                        focusNode: _keystrokeScanFocusNode,
-                        showCursor: false,
-                        enableInteractiveSelection: false,
-                        keyboardType: TextInputType.none,
-                        decoration: const InputDecoration(
-                          border: InputBorder.none,
-                          contentPadding: EdgeInsets.zero,
-                        ),
-                        style: const TextStyle(fontSize: 0, height: 0),
-                        onChanged: (value) {
-                          // Debounce keystroke input to prevent rapid scanning issues
-                          _scanDebounceTimer?.cancel();
-                          _scanDebounceTimer = Timer(const Duration(milliseconds: 50), () {
-                            if (mounted && value.isNotEmpty) {
-                              // Check if the value ends with Enter (common in barcode scanners)
-                              if (value.endsWith('\n') || value.endsWith('\r')) {
-                                _processKeystrokeScan(value.trim());
-                              }
-                            }
-                          });
-                        },
-                        onEditingComplete: () {
-                          // This is called when Enter is pressed
-                          final scannedValue = _keystrokeScanController.text.trim();
-                          if (scannedValue.isNotEmpty && !_isProcessingScan) {
-                            _processKeystrokeScan(scannedValue);
-                          }
-                        },
-                        onFieldSubmitted: (value) {
-                          // This is also called when Enter is pressed - prevent duplicate processing
-                          final scannedValue = value.trim();
-                          if (scannedValue.isNotEmpty && !_isProcessingScan) {
-                            _processKeystrokeScan(scannedValue);
-                          }
-                        },
-                      ),
-                    ),
-                  ),
+
 
                 // Item information section
                 Card(
@@ -1525,6 +1460,58 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
                     },
                   ),
                 ],
+
+                // Invisible TextField for keystroke scanning
+                if (AppConstants.scanningMode == 'keystroke')
+                  SizedBox(
+                    height: 0,
+                    width: 0,
+                    child: Focus(
+                      onFocusChange: (hasFocus) {
+                        if (hasFocus) {
+                          SystemChannels.textInput.invokeMethod('TextInput.hide');
+                        }
+                      },
+                      child: TextFormField(
+                        controller: _keystrokeScanController,
+                        focusNode: _keystrokeScanFocusNode,
+                        showCursor: false,
+                        enableInteractiveSelection: false,
+                        keyboardType: TextInputType.none,
+                        decoration: const InputDecoration(
+                          border: InputBorder.none,
+                          contentPadding: EdgeInsets.zero,
+                        ),
+                        style: const TextStyle(fontSize: 0, height: 0),
+                        onChanged: (value) {
+                          // Debounce keystroke input to prevent rapid scanning issues
+                          _scanDebounceTimer?.cancel();
+                          _scanDebounceTimer = Timer(const Duration(milliseconds: 50), () {
+                            if (mounted && value.isNotEmpty) {
+                              // Check if the value ends with Enter (common in barcode scanners)
+                              if (value.endsWith('\n') || value.endsWith('\r')) {
+                                _processKeystrokeScan(value.trim());
+                              }
+                            }
+                          });
+                        },
+                        onEditingComplete: () {
+                          // This is called when Enter is pressed
+                          final scannedValue = _keystrokeScanController.text.trim();
+                          if (scannedValue.isNotEmpty && !_isProcessingScan) {
+                            _processKeystrokeScan(scannedValue);
+                          }
+                        },
+                        onFieldSubmitted: (value) {
+                          // This is also called when Enter is pressed - prevent duplicate processing
+                          final scannedValue = value.trim();
+                          if (scannedValue.isNotEmpty && !_isProcessingScan) {
+                            _processKeystrokeScan(scannedValue);
+                          }
+                        },
+                      ),
+                    ),
+                  ),
               ],
             ),
           ),

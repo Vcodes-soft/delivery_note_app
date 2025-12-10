@@ -90,16 +90,12 @@ class PurchaseOrderProvider with ChangeNotifier {
   Future<void> initializeScanner() async {
     try {
       setLoading(true);
-      await TelegramLogger.sendLog("🔧 [PurchaseOrderProvider] Initializing scanner...");
 
       if (dataWedge == null) {
         dataWedge = FlutterDataWedge();
         await dataWedge!.initialize();
         await dataWedge!.createDefaultProfile(profileName: "DefaultProfile");
         debugPrint("Scanner initialized");
-        await TelegramLogger.sendLog("✅ [PurchaseOrderProvider] Scanner initialized successfully");
-      } else {
-        await TelegramLogger.sendLog("ℹ️ [PurchaseOrderProvider] Scanner already initialized");
       }
 
       setLoading(false);
@@ -120,7 +116,6 @@ class PurchaseOrderProvider with ChangeNotifier {
   Future<void> startScanning() async {
     try {
       notifyListeners();
-      await TelegramLogger.sendLog("▶️ [PurchaseOrderProvider] Starting scanner...");
 
       if (dataWedge == null) {
         await initializeScanner();
@@ -140,7 +135,6 @@ class PurchaseOrderProvider with ChangeNotifier {
 
         notifyListeners();
         debugPrint('Scanned barcode: $barcode');
-        await TelegramLogger.sendLog("📷 [PurchaseOrderProvider] Barcode scanned: $barcode (Scan count: $_scanCount)");
 
         // Add cooldown to prevent multiple scans
         _scanCooldown = true;
@@ -152,7 +146,6 @@ class PurchaseOrderProvider with ChangeNotifier {
       _isScannerActive = true;
       notifyListeners();
       debugPrint('Scanner started');
-      await TelegramLogger.sendLog("✅ [PurchaseOrderProvider] Scanner started successfully");
     } catch (e, stackTrace) {
       debugPrint('Error starting scanner: $e');
       await TelegramLogger.sendLog("❌ [PurchaseOrderProvider] Error starting scanner\nError: $e\nStack: $stackTrace");
@@ -163,13 +156,11 @@ class PurchaseOrderProvider with ChangeNotifier {
 
   Future<void> stopScanner() async {
     try {
-      await TelegramLogger.sendLog("⏹️ [PurchaseOrderProvider] Stopping scanner...");
       await dataWedge?.activateScanner(false);
       _scanSubscription?.cancel();
       _scanSubscription = null;
       _isScannerActive = false;
       debugPrint('Scanner stopped');
-      await TelegramLogger.sendLog("✅ [PurchaseOrderProvider] Scanner stopped successfully");
     } catch (e, stackTrace) {
       debugPrint("Failed to stop scanner: $e");
       await TelegramLogger.sendLog("❌ [PurchaseOrderProvider] Failed to stop scanner\nError: $e\nStack: $stackTrace");
