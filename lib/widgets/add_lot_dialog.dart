@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import 'package:delivery_note_app/providers/purchase_order_provider.dart';
 import 'package:delivery_note_app/utils/app_alerts.dart';
 import 'package:delivery_note_app/utils/app_constants.dart';
+import 'package:delivery_note_app/services/telegram_logger.dart';
 import 'package:lottie/lottie.dart';
 
 class AddLotScreen extends StatefulWidget {
@@ -90,7 +91,9 @@ class _AddLotScreenState extends State<AddLotScreen> {
 
   @override
   void dispose() {
+    TelegramLogger.sendLog("🗑️ [AddLotScreen] Disposing scanner (SO: ${widget.soNumber}, Item: ${widget.itemCode})");
     _scanDebounceTimer?.cancel();
+    _stopContinuousScanning();
     _scrollController.dispose();
     _serialController.dispose();
     _editSerialController.dispose();
@@ -98,6 +101,7 @@ class _AddLotScreenState extends State<AddLotScreen> {
     _keystrokeScanFocusNode.dispose();
     _manualEntryFocusNode.dispose();
     _editSerialFocusNode.dispose();
+    TelegramLogger.sendLog("✅ [AddLotScreen] Scanner disposed successfully");
     super.dispose();
   }
 
@@ -128,36 +132,47 @@ class _AddLotScreenState extends State<AddLotScreen> {
     if (mounted) {
       final orderProvider = Provider.of<OrderProvider>(context, listen: false);
       try {
+        await TelegramLogger.sendLog("▶️ [AddLotScreen] Starting continuous scanning (SO: ${widget.soNumber}, Item: ${widget.itemCode})");
         setState(() => _isScanning = true);
         await orderProvider.startScanning();
         orderProvider.addListener(_handleScanUpdate);
-      } catch (e) {
+        await TelegramLogger.sendLog("✅ [AddLotScreen] Continuous scanning started successfully");
+      } catch (e, stackTrace) {
         if (mounted) {
           setState(() => _isScanning = false);
         }
+        await TelegramLogger.sendLog("❌ [AddLotScreen] Failed to start continuous scanning\nError: $e\nStack: $stackTrace");
         AppAlerts.appToast(message: 'Failed to start scanner: ${e.toString()}');
       }
     }
   }
 
   Future<void> _stopContinuousScanning() async {
-    if (AppConstants.scanningMode == 'keystroke') {
-      // For keystroke mode, just unfocus the field
-      _keystrokeScanFocusNode.unfocus();
-      if (mounted) {
-        setState(() => _isScanning = false);
+    try {
+      await TelegramLogger.sendLog("⏹️ [AddLotScreen] Stopping scanning (SO: ${widget.soNumber}, Item: ${widget.itemCode})");
+      if (AppConstants.scanningMode == 'keystroke') {
+        // For keystroke mode, just unfocus the field
+        _keystrokeScanFocusNode.unfocus();
+        if (mounted) {
+          setState(() => _isScanning = false);
+        }
+        await TelegramLogger.sendLog("✅ [AddLotScreen] Keystroke scanning stopped");
+      } else {
+        final orderProvider = Provider.of<OrderProvider>(context, listen: false);
+        orderProvider.removeListener(_handleScanUpdate);
+        try {
+          await orderProvider.stopScanner();
+        } catch (e, stackTrace) {
+          debugPrint("Error stopping scanner: $e");
+          await TelegramLogger.sendLog("❌ [AddLotScreen] Error stopping scanner\nError: $e\nStack: $stackTrace");
+        }
+        if (mounted) {
+          setState(() => _isScanning = false);
+        }
+        await TelegramLogger.sendLog("✅ [AddLotScreen] Continuous scanning stopped");
       }
-    } else {
-      final orderProvider = Provider.of<OrderProvider>(context, listen: false);
-      orderProvider.removeListener(_handleScanUpdate);
-      try {
-        await orderProvider.stopScanner();
-      } catch (e) {
-        debugPrint("Error stopping scanner: $e");
-      }
-      if (mounted) {
-        setState(() => _isScanning = false);
-      }
+    } catch (e, stackTrace) {
+      await TelegramLogger.sendLog("❌ [AddLotScreen] Error in _stopContinuousScanning\nError: $e\nStack: $stackTrace");
     }
   }
 
@@ -837,7 +852,9 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
 
   @override
   void dispose() {
+    TelegramLogger.sendLog("🗑️ [POAddLotScreen] Disposing scanner (PO: ${widget.poNumber}, Item: ${widget.itemCode})");
     _scanDebounceTimer?.cancel();
+    _stopContinuousScanning();
     _scrollController.dispose();
     _serialController.dispose();
     _editSerialController.dispose();
@@ -845,6 +862,7 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
     _keystrokeScanFocusNode.dispose();
     _manualEntryFocusNode.dispose();
     _editSerialFocusNode.dispose();
+    TelegramLogger.sendLog("✅ [POAddLotScreen] Scanner disposed successfully");
     super.dispose();
   }
 
@@ -875,36 +893,47 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
     if (mounted) {
       final orderProvider = Provider.of<PurchaseOrderProvider>(context, listen: false);
       try {
+        await TelegramLogger.sendLog("▶️ [POAddLotScreen] Starting continuous scanning (PO: ${widget.poNumber}, Item: ${widget.itemCode})");
         setState(() => _isScanning = true);
         await orderProvider.startScanning();
         orderProvider.addListener(_handleScanUpdate);
-      } catch (e) {
+        await TelegramLogger.sendLog("✅ [POAddLotScreen] Continuous scanning started successfully");
+      } catch (e, stackTrace) {
         if (mounted) {
           setState(() => _isScanning = false);
         }
+        await TelegramLogger.sendLog("❌ [POAddLotScreen] Failed to start continuous scanning\nError: $e\nStack: $stackTrace");
         AppAlerts.appToast(message: 'Failed to start scanner: ${e.toString()}');
       }
     }
   }
 
   Future<void> _stopContinuousScanning() async {
-    if (AppConstants.scanningMode == 'keystroke') {
-      // For keystroke mode, just unfocus the field
-      _keystrokeScanFocusNode.unfocus();
-      if (mounted) {
-        setState(() => _isScanning = false);
+    try {
+      await TelegramLogger.sendLog("⏹️ [POAddLotScreen] Stopping scanning (PO: ${widget.poNumber}, Item: ${widget.itemCode})");
+      if (AppConstants.scanningMode == 'keystroke') {
+        // For keystroke mode, just unfocus the field
+        _keystrokeScanFocusNode.unfocus();
+        if (mounted) {
+          setState(() => _isScanning = false);
+        }
+        await TelegramLogger.sendLog("✅ [POAddLotScreen] Keystroke scanning stopped");
+      } else {
+        final orderProvider = Provider.of<PurchaseOrderProvider>(context, listen: false);
+        orderProvider.removeListener(_handleScanUpdate);
+        try {
+          await orderProvider.stopScanner();
+        } catch (e, stackTrace) {
+          debugPrint("Error stopping scanner: $e");
+          await TelegramLogger.sendLog("❌ [POAddLotScreen] Error stopping scanner\nError: $e\nStack: $stackTrace");
+        }
+        if (mounted) {
+          setState(() => _isScanning = false);
+        }
+        await TelegramLogger.sendLog("✅ [POAddLotScreen] Continuous scanning stopped");
       }
-    } else {
-      final orderProvider = Provider.of<PurchaseOrderProvider>(context, listen: false);
-      orderProvider.removeListener(_handleScanUpdate);
-      try {
-        await orderProvider.stopScanner();
-      } catch (e) {
-        debugPrint("Error stopping scanner: $e");
-      }
-      if (mounted) {
-        setState(() => _isScanning = false);
-      }
+    } catch (e, stackTrace) {
+      await TelegramLogger.sendLog("❌ [POAddLotScreen] Error in _stopContinuousScanning\nError: $e\nStack: $stackTrace");
     }
   }
 
@@ -921,9 +950,12 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
 
   Future<void> _handleScannedBarcode(BuildContext context, String barcode) async {
     try {
+      await TelegramLogger.sendLog("📷 [POAddLotScreen] Handling scanned barcode: $barcode (PO: ${widget.poNumber}, Item: ${widget.itemCode})");
       await _addSerial(context, barcode);
-    } catch (e) {
+      await TelegramLogger.sendLog("✅ [POAddLotScreen] Barcode handled successfully: $barcode");
+    } catch (e, stackTrace) {
       if (mounted) {
+        await TelegramLogger.sendLog("❌ [POAddLotScreen] Error handling barcode: $barcode\nError: $e\nStack: $stackTrace");
         AppAlerts.appToast(message: 'Error handling barcode: ${e.toString()}');
       }
     }
@@ -936,6 +968,7 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
     _scanDebounceTimer?.cancel();
     
     try {
+      await TelegramLogger.sendLog("⌨️ [POAddLotScreen] Processing keystroke scan: $scannedValue (PO: ${widget.poNumber}, Item: ${widget.itemCode})");
       await _handleScannedBarcode(context, scannedValue);
       if (mounted) {
         _keystrokeScanController.clear();
@@ -946,8 +979,10 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
           }
         });
       }
-    } catch (e) {
+      await TelegramLogger.sendLog("✅ [POAddLotScreen] Keystroke scan processed successfully: $scannedValue");
+    } catch (e, stackTrace) {
       if (mounted) {
+        await TelegramLogger.sendLog("❌ [POAddLotScreen] Error processing keystroke scan: $scannedValue\nError: $e\nStack: $stackTrace");
         AppAlerts.appToast(message: 'Error processing scan: ${e.toString()}');
       }
     } finally {
