@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:delivery_note_app/helpers/isolate_helpers.dart';
 import 'package:delivery_note_app/models/delivery_note_details.dart';
 import 'package:delivery_note_app/models/delivery_note_header.dart';
 import 'package:delivery_note_app/models/inventory_detail_serialno.dart';
@@ -49,7 +50,8 @@ class OrderProvider with ChangeNotifier {
       ORDER BY SODate DESC
       """);
 
-      final data = jsonDecode(result) as List;
+      // Parse JSON in isolate to prevent blocking UI thread
+      final data = await parseJsonInIsolate(result);
 
       final ordersMap = <String, SalesOrder>{};
 
@@ -93,7 +95,8 @@ class OrderProvider with ChangeNotifier {
       ORDER BY Sno
       """);
 
-      final data = jsonDecode(result) as List;
+      // Parse JSON in isolate to prevent blocking UI thread
+      final data = await parseJsonInIsolate(result);
 
       // Find existing order or create new one
       SalesOrder? order = getSalesOrderById(soNumber);
@@ -104,7 +107,8 @@ class OrderProvider with ChangeNotifier {
         WHERE SoNumber = '$soNumber'
         """);
 
-        final headerData = jsonDecode(headerResult) as List;
+        // Parse header JSON in isolate
+        final headerData = await parseJsonInIsolate(headerResult);
         if (headerData.isEmpty) throw Exception('Order not found');
 
         order = SalesOrder.fromJson(headerData.first);
@@ -135,7 +139,8 @@ class OrderProvider with ChangeNotifier {
         ORDER BY SODate DESC
       """);
 
-      final data = jsonDecode(result) as List;
+      // Parse JSON in isolate to prevent blocking UI thread
+      final data = await parseJsonInIsolate(result);
       return data.map((json) => SalesOrder.fromJson(json)).toList();
     } catch (e) {
       throw Exception('Failed to fetch orders: ${e.toString()}');
@@ -471,27 +476,8 @@ class OrderProvider with ChangeNotifier {
   ''';
 
     final result = await _sqlConnection.getData(query);
-    final resultJson = jsonDecode(result);
-
-    if (resultJson.isEmpty) {
-      return 'ADN000001';
-    } else {
-      // Extract all DN numbers and parse their numeric parts
-      final dnNumbers =
-          resultJson.map<String>((item) => item['DnNumber'] as String).toList();
-
-      // Find the maximum number
-      int maxNumber = 0;
-      for (final dn in dnNumbers) {
-        final number = int.tryParse(dn.replaceAll('ADN', '')) ?? 0;
-        if (number > maxNumber) {
-          maxNumber = number;
-        }
-      }
-
-      final nextNumber = maxNumber + 1;
-      return 'ADN${nextNumber.toString().padLeft(6, '0')}';
-    }
+    // Parse JSON and find next number in isolate
+    return await getNextDnNumberFromJson(result);
   }
 
   void setLoading(bool value) {
@@ -634,10 +620,10 @@ class OrderProvider with ChangeNotifier {
   }
 
   // Modify this method to return a map with serial numbers and their positions
-  Map<String, List<int>> getDuplicateSerialsWithPositions({
+  Future<Map<String, List<int>>> getDuplicateSerialsWithPositions({
     required String soNumber,
     required String itemCode,
-  }) {
+  }) async {
     final order = getSalesOrderById(soNumber);
     if (order == null) return {};
 
@@ -647,19 +633,9 @@ class OrderProvider with ChangeNotifier {
     );
 
     final serialNumbers = item.serials.map((s) => s.serialNo).toList();
-    final serialPositions = <String, List<int>>{};
-
-    // Track positions of each serial number
-    for (int i = 0; i < serialNumbers.length; i++) {
-      final serial = serialNumbers[i];
-      if (!serialPositions.containsKey(serial)) {
-        serialPositions[serial] = [];
-      }
-      serialPositions[serial]!.add(i + 1); // +1 to make it 1-based index
-    }
-
-    // Return only duplicates (serial numbers that appear more than once)
-    return serialPositions..removeWhere((key, value) => value.length <= 1);
+    
+    // Find duplicates in isolate to prevent blocking UI thread
+    return await findDuplicateSerials(serialNumbers);
   }
 
 // Also add this method to get duplicate serials for display

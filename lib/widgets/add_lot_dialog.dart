@@ -327,7 +327,7 @@ class _AddLotScreenState extends State<AddLotScreen> {
     if (hasDuplicates) {
       // Show alert about duplicates with positions
       final duplicatesWithPositions =
-      orderProvider.getDuplicateSerialsWithPositions(
+      await orderProvider.getDuplicateSerialsWithPositions(
         soNumber: widget.soNumber,
         itemCode: widget.itemCode,
       );
@@ -1086,7 +1086,7 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
     if (hasDuplicates) {
       // Show alert about duplicates with positions
       final duplicatesWithPositions =
-      orderProvider.getDuplicateSerialsWithPositions(
+      await orderProvider.getDuplicateSerialsWithPositions(
         poNumber: widget.poNumber,
         itemCode: widget.itemCode,
       );

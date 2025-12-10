@@ -1,6 +1,7 @@
 // purchase_order_provider.dart
 import 'dart:async';
 import 'dart:convert';
+import 'package:delivery_note_app/helpers/isolate_helpers.dart';
 import 'package:delivery_note_app/models/sales_order_model.dart';
 import 'package:delivery_note_app/utils/app_alerts.dart';
 import 'package:delivery_note_app/utils/extensions.dart';
@@ -54,7 +55,8 @@ class PurchaseOrderProvider with ChangeNotifier {
       ORDER BY SODate DESC
       """);
 
-      final data = jsonDecode(result) as List;
+      // Parse JSON in isolate to prevent blocking UI thread
+      final data = await parseJsonInIsolate(result);
 
       // Create a map to group orders by PO number
       final ordersMap = <String, PurchaseOrder>{};
@@ -179,7 +181,8 @@ class PurchaseOrderProvider with ChangeNotifier {
         ORDER BY SODate DESC
       """);
 
-      final data = jsonDecode(result) as List;
+      // Parse JSON in isolate to prevent blocking UI thread
+      final data = await parseJsonInIsolate(result);
       return data.map((json) => PurchaseOrder.fromJson(json)).toList();
     } catch (e) {
       throw Exception('Failed to fetch orders: ${e.toString()}');
@@ -483,28 +486,8 @@ class PurchaseOrderProvider with ChangeNotifier {
   ''';
 
     final result = await _sqlConnection.getData(query);
-    final resultJson = jsonDecode(result);
-
-    if (resultJson.isEmpty) {
-      return 'AGRN00001';
-    } else {
-      // Extract all GRN numbers and parse their numeric parts
-      final grnNumbers = resultJson
-          .map<String>((item) => item['GrnNumber'] as String)
-          .toList();
-
-      // Find the maximum number
-      int maxNumber = 0;
-      for (final grn in grnNumbers) {
-        final number = int.tryParse(grn.replaceAll('AGRN', '')) ?? 0;
-        if (number > maxNumber) {
-          maxNumber = number;
-        }
-      }
-
-      final nextNumber = maxNumber + 1;
-      return 'AGRN${nextNumber.toString().padLeft(5, '0')}';
-    }
+    // Parse JSON and find next number in isolate
+    return await getNextGrnNumberFromJson(result);
   }
 
   PurchaseOrder? getPurchaseOrderById(String poNumber) {
@@ -655,10 +638,10 @@ class PurchaseOrderProvider with ChangeNotifier {
   }
 
   // Modify this method to return a map with serial numbers and their positions
-  Map<String, List<int>> getDuplicateSerialsWithPositions({
+  Future<Map<String, List<int>>> getDuplicateSerialsWithPositions({
     required String poNumber,
     required String itemCode,
-  }) {
+  }) async {
     final order = getPurchaseOrderById(poNumber);
     if (order == null) return {};
 
@@ -668,19 +651,9 @@ class PurchaseOrderProvider with ChangeNotifier {
     );
 
     final serialNumbers = item.serials.map((s) => s.serialNo).toList();
-    final serialPositions = <String, List<int>>{};
-
-    // Track positions of each serial number
-    for (int i = 0; i < serialNumbers.length; i++) {
-      final serial = serialNumbers[i];
-      if (!serialPositions.containsKey(serial)) {
-        serialPositions[serial] = [];
-      }
-      serialPositions[serial]!.add(i + 1); // +1 to make it 1-based index
-    }
-
-    // Return only duplicates (serial numbers that appear more than once)
-    return serialPositions..removeWhere((key, value) => value.length <= 1);
+    
+    // Find duplicates in isolate to prevent blocking UI thread
+    return await findDuplicateSerials(serialNumbers);
   }
 
   void resetValidation() {
