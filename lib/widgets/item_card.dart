@@ -82,26 +82,43 @@ class _ItemCardState extends State<ItemCard> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             /// Item Name + Stock
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Flexible(
-                  child: GestureDetector(
-                    onTap: () => setState(() => _isExpanded = !_isExpanded),
-                    child: Text(
-                      widget.item.itemName,
-                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                        fontWeight: FontWeight.w600,
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: () => setState(() => _isExpanded = !_isExpanded),
+                        child: Text(
+                          widget.item.itemName,
+                          style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                          maxLines: _isExpanded ? null : 1,
+                          overflow: _isExpanded ? null : TextOverflow.ellipsis,
+                        ),
                       ),
-                      maxLines: _isExpanded ? null : 1,
-                      overflow: _isExpanded ? null : TextOverflow.ellipsis,
+                    ),
+                    if (!_isExpanded)
+                      Padding(
+                        padding: const EdgeInsets.only(left: 8),
+                        child: Text(
+                          'Stock: $stockQty',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ),
+                  ],
+                ),
+                if (_isExpanded)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      'Stock: $stockQty',
+                      style: Theme.of(context).textTheme.bodySmall,
                     ),
                   ),
-                ),
-                Text(
-                  'Stock: $stockQty',
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
               ],
             ),
             const SizedBox(height: 6),
