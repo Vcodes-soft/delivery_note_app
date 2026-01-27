@@ -54,6 +54,7 @@ class PurchaseOrderItem {
   final bool serialYN;
   final double poQty;
   final List<ItemSerial> serials;
+  final Set<String> _scannedBarcodes; // Use Set to prevent duplicate barcodes
 
   PurchaseOrderItem({
     required this.itemCode,
@@ -66,7 +67,7 @@ class PurchaseOrderItem {
     required this.serialYN,
     this.poQty = 0,
     required this.serials,
-  });
+  }) : _scannedBarcodes = (serials.map((s) => s.serialNo).toSet());
 
   factory PurchaseOrderItem.fromJson(Map<String, dynamic> json) {
     return PurchaseOrderItem(
@@ -83,13 +84,46 @@ class PurchaseOrderItem {
   }
 
   bool hasSerial(String serialNo) {
-    return serials.any((s) => s.serialNo == serialNo);
+    return _scannedBarcodes.contains(serialNo);
   }
 
   void addSerial(String serialNo) {
+    // Check if barcode already exists in the set
+    if (_scannedBarcodes.contains(serialNo)) {
+      return; // Don't add duplicate barcode
+    }
+    
+    // Add to set and list
+    _scannedBarcodes.add(serialNo);
     serials.add(ItemSerial(
       serialNo: serialNo,
       sNo: serials.length + 1,
     ));
+  }
+
+  // Remove a serial number from this item
+  void removeSerial(String serialNo) {
+    // Remove from set
+    _scannedBarcodes.remove(serialNo);
+    
+    // Find and remove from list
+    final serialIndex = serials.indexWhere((s) => s.serialNo == serialNo);
+    if (serialIndex != -1) {
+      serials.removeAt(serialIndex);
+      
+      // Recalculate positions (serial numbers)
+      for (int i = 0; i < serials.length; i++) {
+        serials[i] = ItemSerial(
+          serialNo: serials[i].serialNo,
+          sNo: i + 1,
+        );
+      }
+    }
+  }
+
+  // Clear all serials
+  void clearSerials() {
+    _scannedBarcodes.clear();
+    serials.clear();
   }
 }

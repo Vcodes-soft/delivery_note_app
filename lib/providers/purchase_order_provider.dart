@@ -22,6 +22,28 @@ class PurchaseOrderProvider with ChangeNotifier {
   String? get error => _error;
   List<PurchaseOrder> filteredPurchaseOrders = [];
   String searchQuery = '';
+  String? _selectedLocationCode;
+  String? _selectedSupplierName;
+  String? get selectedLocationCode => _selectedLocationCode;
+  String? get selectedSupplierName => _selectedSupplierName;
+  
+  // Get unique locations and suppliers from orders
+  List<String> get uniqueLocations {
+    final locations = _purchaseOrders
+        .map((o) => o.locationCode)
+        .where((loc) => loc != null && loc.isNotEmpty)
+        .toSet()
+        .toList();
+    locations.sort();
+    return locations;
+  }
+  
+  List<String> get uniqueSuppliers {
+    final suppliers = _purchaseOrders.map((o) => o.supplierName).toSet().toList();
+    suppliers.sort();
+    return suppliers;
+  }
+  
   FlutterDataWedge? dataWedge;
   StreamSubscription? _scanSubscription;
   bool _isScannerActive = false;
@@ -34,11 +56,57 @@ class PurchaseOrderProvider with ChangeNotifier {
   bool isValidForPosting = true;
   String validationMessage = '';
 
+  void setLocationFilter(String? locationCode) {
+    _selectedLocationCode = locationCode;
+    applyFilters();
+  }
+
+  void setSupplierFilter(String? supplierName) {
+    _selectedSupplierName = supplierName;
+    applyFilters();
+  }
+
+  void clearFilters({bool notify = true}) {
+    _selectedLocationCode = null;
+    _selectedSupplierName = null;
+    searchQuery = '';
+    if (notify) {
+      applyFilters();
+    } else {
+      // Just update filtered list without notifying listeners
+      filteredPurchaseOrders = _purchaseOrders;
+    }
+  }
+
   void searchPurchaseOrders(String query) {
     searchQuery = query;
-    filteredPurchaseOrders = purchaseOrders.where((order) {
-      return order.poNumber.toLowerCase().contains(query.toLowerCase()) ||
-          order.supplierName.toLowerCase().contains(query.toLowerCase());
+    applyFilters();
+  }
+
+  void applyFilters() {
+    filteredPurchaseOrders = _purchaseOrders.where((order) {
+      // Filter by PO# if search query is provided
+      if (searchQuery.isNotEmpty) {
+        if (!order.poNumber.toLowerCase().contains(searchQuery.toLowerCase())) {
+          return false;
+        }
+      }
+      
+      // Filter by location if selected
+      if (_selectedLocationCode != null && _selectedLocationCode!.isNotEmpty) {
+        if (order.locationCode != _selectedLocationCode) {
+          return false;
+        }
+      }
+      
+      // Filter by supplier if selected
+      if (_selectedSupplierName != null && _selectedSupplierName!.isNotEmpty) {
+        if (order.supplierName != _selectedSupplierName) {
+          return false;
+        }
+      }
+      
+      return true;
     }).toList();
     notifyListeners();
   }
@@ -73,6 +141,7 @@ class PurchaseOrderProvider with ChangeNotifier {
 
       // Convert map values to list
       _purchaseOrders = ordersMap.values.toList();
+      applyFilters();
     } catch (e) {
       _error = 'Failed to fetch orders: ${e.toString()}';
       rethrow;
@@ -175,7 +244,7 @@ class PurchaseOrderProvider with ChangeNotifier {
     try {
       final result = await _sqlConnection.getData("""
         SELECT * FROM VW_DM_PODetails 
-        WHERE loccode = '$locationCode'
+        WHERE loccode = '${_escapeSqlString(locationCode)}'
         ORDER BY SODate DESC
       """);
 
@@ -186,6 +255,12 @@ class PurchaseOrderProvider with ChangeNotifier {
     }
   }
 
+  // Helper function to escape SQL strings (replace single quotes with double single quotes)
+  String _escapeSqlString(String? value) {
+    if (value == null) return '';
+    return value.replaceAll("'", "''");
+  }
+
   Future<void> postGoodsReceipt(BuildContext context, String poNumber) async {
     validationMessage = "";
     isValidForPosting = true;
@@ -194,11 +269,21 @@ class PurchaseOrderProvider with ChangeNotifier {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     final String companyCode = prefs.getString('companyCode') ?? "";
     final String username = prefs.getString("username") ?? "";
+    final String locationCode = prefs.getString('location') ?? "";
 
     if (order == null) {
       setLoading(false);
-      print('Order not found for PO: $poNumber');
-      AppAlerts.appToast(message: "Order not found for PO: $poNumber");
+      final errorMsg = "Order not found for PO: $poNumber";
+      print('ERROR: $errorMsg');
+      await TelegramLogger.sendLog(
+        "❌ [PurchaseOrderProvider] postGoodsReceipt - Order Not Found\n"
+        "PO Number: $poNumber\n"
+        "Company Code: $companyCode\n"
+        "Location Code: $locationCode\n"
+        "Username: $username\n"
+        "Timestamp: ${DateTime.now().toIso8601String()}"
+      );
+      AppAlerts.appToast(message: errorMsg);
       return;
     }
 
@@ -226,7 +311,7 @@ class PurchaseOrderProvider with ChangeNotifier {
         for (var serial in item.serials) {
           final checkSerialQuery = '''
         SELECT COUNT(*) as count FROM GrnDetailSerials 
-        WHERE CmpyCode = '$companyCode' AND ItemCode = '${item.itemCode}' AND SerialNo = '${serial.serialNo}'
+        WHERE CmpyCode = '${_escapeSqlString(companyCode)}' AND ItemCode = '${_escapeSqlString(item.itemCode)}' AND SerialNo = '${_escapeSqlString(serial.serialNo)}'
       ''';
 
           final resultString = await _sqlConnection.getData(checkSerialQuery);
@@ -243,15 +328,37 @@ class PurchaseOrderProvider with ChangeNotifier {
     // If validation fails, show error message and return
     if (!isValidForPosting) {
       setLoading(false);
-      AppAlerts.appToast(
-          message: "GRN validation failed: \n $validationMessage");
+      final errorMsg = "GRN validation failed: \n $validationMessage";
+      print('ERROR: $errorMsg');
+      await TelegramLogger.sendLog(
+        "❌ [PurchaseOrderProvider] postGoodsReceipt - Validation Failed\n"
+        "PO Number: $poNumber\n"
+        "Company Code: $companyCode\n"
+        "Location Code: $locationCode\n"
+        "Username: $username\n"
+        "Validation Errors:\n$validationMessage\n"
+        "Timestamp: ${DateTime.now().toIso8601String()}"
+      );
+      AppAlerts.appToast(message: errorMsg);
       return;
     }
 
     // Check if there are any items with qtyReceived > 0 to process
     if (itemsToProcess.isEmpty) {
       setLoading(false);
-      AppAlerts.appToast(message: "No items with quantity received to process");
+      final errorMsg = "No items with quantity received to process";
+      print('ERROR: $errorMsg');
+      await TelegramLogger.sendLog(
+        "❌ [PurchaseOrderProvider] postGoodsReceipt - No Items to Process\n"
+        "PO Number: $poNumber\n"
+        "Company Code: $companyCode\n"
+        "Location Code: $locationCode\n"
+        "Username: $username\n"
+        "Total Items in Order: ${order.items.length}\n"
+        "Items with qtyReceived > 0: ${itemsToProcess.length}\n"
+        "Timestamp: ${DateTime.now().toIso8601String()}"
+      );
+      AppAlerts.appToast(message: errorMsg);
       return;
     }
 
@@ -263,7 +370,7 @@ class PurchaseOrderProvider with ChangeNotifier {
       final grnHeader = {
         'CmpyCode': companyCode,
         'GrnNumber': nextGrnNumber,
-        'LocCode': order.locationCode,
+        'LocCode': locationCode,
         'Dates': DateFormat('yyyy-MM-dd').format(DateTime.now()),
         'SupplierCode': order.supplierCode,
         'RefNo': order.refNo.toString() == "null"?"":order.refNo.toString(),
@@ -289,23 +396,23 @@ class PurchaseOrderProvider with ChangeNotifier {
     Status, CurCode, ExRate, Discount, GrnType, Qty, DTime, LoginUser, 
     MType, GrnType1
   ) VALUES (
-    '${grnHeader['CmpyCode']}', 
-    '${grnHeader['GrnNumber']}', 
-    '${grnHeader['LocCode']}', 
-    CONVERT(DATETIME, '${grnHeader['Dates']}', 120), 
-    '${grnHeader['SupplierCode']}', 
-    '${grnHeader['RefNo'].toString() == "null"?"":grnHeader['RefNo'].toString()}', 
-    '${grnHeader['InvStat']}', 
-    '${grnHeader['Status']}', 
-    '${grnHeader['CurCode']}', 
+    '${_escapeSqlString(grnHeader['CmpyCode']?.toString())}', 
+    '${_escapeSqlString(grnHeader['GrnNumber']?.toString())}', 
+    '${_escapeSqlString(grnHeader['LocCode']?.toString())}', 
+    CONVERT(DATETIME, '${_escapeSqlString(grnHeader['Dates']?.toString())}', 120), 
+    '${_escapeSqlString(grnHeader['SupplierCode']?.toString())}', 
+    '${_escapeSqlString(grnHeader['RefNo'].toString() == "null" ? "" : grnHeader['RefNo'].toString())}', 
+    '${_escapeSqlString(grnHeader['InvStat']?.toString())}', 
+    '${_escapeSqlString(grnHeader['Status']?.toString())}', 
+    '${_escapeSqlString(grnHeader['CurCode']?.toString())}', 
     ${grnHeader['ExRate']}, 
     ${grnHeader['Discount']}, 
-    '${grnHeader['GrnType']}', 
+    '${_escapeSqlString(grnHeader['GrnType']?.toString())}', 
     ${grnHeader['Qty']}, 
-    '${grnHeader['DTime']}', 
-    '${grnHeader['LoginUser']}', 
-    '${grnHeader['MType']}', 
-    '${grnHeader['GrnType1']}'
+    '${_escapeSqlString(grnHeader['DTime']?.toString())}', 
+    '${_escapeSqlString(grnHeader['LoginUser']?.toString())}', 
+    '${_escapeSqlString(grnHeader['MType']?.toString())}', 
+    ${grnHeader['GrnType1'] != null ? "'${_escapeSqlString(grnHeader['GrnType1'].toString())}'" : 'NULL'}
   )
   ''';
 
@@ -321,7 +428,7 @@ class PurchaseOrderProvider with ChangeNotifier {
         final detail = {
           'CmpyCode': companyCode,
           'GrnNumber': nextGrnNumber,
-          'LocCode': order.locationCode,
+          'LocCode': locationCode,
           'Sno': bsno, // bsno is same as sno
           'ItemCode': item.itemCode,
           'Barcode': null,
@@ -356,32 +463,32 @@ class PurchaseOrderProvider with ChangeNotifier {
       AvgCost, ProjectCode, AnalysisCode, SrNo, PoNumber, DiscountP, 
       Discount, NetAmount, NetPurchase, Bsno, TaxCode, TaxPercentage, BinCode
     ) VALUES (
-      '${detail['CmpyCode']}', 
-      '${detail['GrnNumber']}', 
-      '${detail['LocCode']}', 
+      '${_escapeSqlString(detail['CmpyCode']?.toString())}', 
+      '${_escapeSqlString(detail['GrnNumber']?.toString())}', 
+      '${_escapeSqlString(detail['LocCode']?.toString())}', 
       ${detail['Sno']}, 
-      '${detail['ItemCode']}', 
-      ${detail['Barcode'] != null ? "'${detail['Barcode']}'" : 'NULL'}, 
-      '${detail['Description']}',
-      '${detail['Unit']}', 
+      '${_escapeSqlString(detail['ItemCode']?.toString())}', 
+      ${detail['Barcode'] != null ? "'${_escapeSqlString(detail['Barcode'].toString())}'" : 'NULL'}, 
+      '${_escapeSqlString(detail['Description']?.toString())}',
+      '${_escapeSqlString(detail['Unit']?.toString())}', 
       ${detail['QtyOrdered']}, 
       ${detail['QtyReceived']}, 
       ${detail['QtyFree']}, 
       ${detail['UnitPrice']}, 
       ${detail['GrossTotal']}, 
       ${detail['AvgCost']}, 
-      ${detail['ProjectCode'] != null ? "'${detail['ProjectCode']}'" : 'NULL'}, 
-      ${detail['AnalysisCode'] != null ? "'${detail['AnalysisCode']}'" : 'NULL'}, 
-      ${detail['SrNo'] != null ? "'${detail['SrNo']}'" : 'NULL'}, 
-      '${detail['PoNumber']}', 
+      ${detail['ProjectCode'] != null ? "'${_escapeSqlString(detail['ProjectCode'].toString())}'" : 'NULL'}, 
+      ${detail['AnalysisCode'] != null ? "'${_escapeSqlString(detail['AnalysisCode'].toString())}'" : 'NULL'}, 
+      ${detail['SrNo'] != null ? "'${_escapeSqlString(detail['SrNo'].toString())}'" : 'NULL'}, 
+      '${_escapeSqlString(detail['PoNumber']?.toString())}', 
       ${detail['DiscountP']},
       ${detail['Discount']}, 
       ${detail['NetAmount']}, 
       ${detail['NetPurchase']}, 
-      ${detail['Bsno'] != null ? "'${detail['Bsno']}'" : 'NULL'}, 
-      ${detail['TaxCode'] != null ? "'${detail['TaxCode']}'" : 'NULL'}, 
+      ${detail['Bsno'] != null ? "'${_escapeSqlString(detail['Bsno'].toString())}'" : 'NULL'}, 
+      ${detail['TaxCode'] != null ? "'${_escapeSqlString(detail['TaxCode'].toString())}'" : 'NULL'}, 
       ${detail['TaxPercentage']},
-      ${detail['BinCode'] != null ? "'${detail['BinCode']}'" : 'NULL'}
+      ${detail['BinCode'] != null ? "'${_escapeSqlString(detail['BinCode'].toString())}'" : 'NULL'}
     )
     ''';
 
@@ -393,10 +500,10 @@ class PurchaseOrderProvider with ChangeNotifier {
         final updateSoDetailQuery = '''
       UPDATE PoDetail 
       SET QtyReceived = QtyReceived + ${item.qtyReceived}, 
-          SrNo = '${bsno.toString()}'
-      WHERE CmpyCode = '${order.companyCode}' 
-        AND PoNumber = '${order.poNumber}' 
-        AND ItemCode = '${item.itemCode}' 
+          SrNo = '${_escapeSqlString(bsno.toString())}'
+      WHERE CmpyCode = '${_escapeSqlString(order.companyCode)}' 
+        AND PoNumber = '${_escapeSqlString(order.poNumber)}' 
+        AND ItemCode = '${_escapeSqlString(item.itemCode)}' 
     ''';
 
         print('Updating SoDetail for item ${item.itemCode}...');
@@ -409,13 +516,13 @@ class PurchaseOrderProvider with ChangeNotifier {
 
           for (var serial in item.serials) {
             final value = '''
-    ('$companyCode', 
-     '$nextGrnNumber', 
+    ('${_escapeSqlString(companyCode)}', 
+     '${_escapeSqlString(nextGrnNumber)}', 
      '', 
-     '${globalSerialSno.toString()}', 
-     '${item.itemCode}', 
-     '${serial.serialNo}', 
-     '${bsno.toString()}', 
+     '${_escapeSqlString(globalSerialSno.toString())}', 
+     '${_escapeSqlString(item.itemCode)}', 
+     '${_escapeSqlString(serial.serialNo)}', 
+     '${_escapeSqlString(bsno.toString())}', 
      'P', 
      ${false ? 1 : 0})
   ''';
@@ -453,7 +560,7 @@ class PurchaseOrderProvider with ChangeNotifier {
     UPDATE PoHeader 
     SET Status = '${isFullyReceived ? 'C' : 'O'}', 
         GRNStat = 'Y'
-    WHERE PoNumber = '${order.poNumber}' AND CmpyCode = '${order.companyCode}'
+    WHERE PoNumber = '${_escapeSqlString(order.poNumber)}' AND CmpyCode = '${_escapeSqlString(order.companyCode)}'
     ''';
 
       print('Updating PO status...');
@@ -466,10 +573,43 @@ class PurchaseOrderProvider with ChangeNotifier {
       AppAlerts.appToast(message: "GRN $nextGrnNumber posted successfully");
     } catch (e, stackTrace) {
       setLoading(false);
+      final errorMsg = "Failed to post GRN: ${e.toString()}";
       print('ERROR in postGoodsReceipt:');
       print('Message: $e');
       print('Stack trace: $stackTrace');
-      AppAlerts.appToast(message: "Failed to post GRN: ${e.toString()}");
+      
+      // Build detailed error log
+      String errorDetails = "❌ [PurchaseOrderProvider] postGoodsReceipt - Exception\n"
+          "PO Number: $poNumber\n"
+          "Company Code: $companyCode\n"
+          "Location Code: $locationCode\n"
+          "Username: $username\n"
+          "Error Type: ${e.runtimeType}\n"
+          "Error Message: $e\n"
+          "Stack Trace:\n$stackTrace\n";
+      
+      // Add order details if available
+      if (order != null) {
+        errorDetails += "Order Details:\n"
+            "  Supplier: ${order.supplierName}\n"
+            "  Items Count: ${order.items.length}\n"
+            "  Items to Process: ${itemsToProcess.length}\n";
+        
+        // Add item details
+        if (itemsToProcess.isNotEmpty) {
+          errorDetails += "  Items:\n";
+          for (var item in itemsToProcess) {
+            errorDetails += "    - ${item.itemCode} (${item.itemName}): "
+                "Ordered: ${item.qtyOrdered}, Received: ${item.qtyReceived}, "
+                "Serialized: ${item.serialYN}\n";
+          }
+        }
+      }
+      
+      errorDetails += "Timestamp: ${DateTime.now().toIso8601String()}";
+      
+      await TelegramLogger.sendLog(errorDetails);
+      AppAlerts.appToast(message: errorMsg);
     } finally {
       setLoading(false);
     }
@@ -530,12 +670,9 @@ class PurchaseOrderProvider with ChangeNotifier {
       }
 
       // 2. SAFE DATABASE CHECK - Using proper parameterization
-      final escapedSerial = serialNo.replaceAll("'", "''");
-      final escapedItemCode = itemCode.replaceAll("'", "''");
-
       final result = await _sqlConnection.getData(
           "SELECT TOP 1 1 FROM GrnDetailSerials "
-          "WHERE SerialNo = '$escapedSerial' AND ItemCode = '$escapedItemCode'");
+          "WHERE SerialNo = '${_escapeSqlString(serialNo)}' AND ItemCode = '${_escapeSqlString(itemCode)}'");
 
       return result.isEmpty || result == "[]";
     } catch (e) {
@@ -594,25 +731,16 @@ class PurchaseOrderProvider with ChangeNotifier {
         orElse: () => throw Exception('Item not found'),
       );
 
-      // Find the serial to remove
-      final serialIndex = item.serials.indexWhere((s) => s.serialNo == serialNo);
-      if (serialIndex == -1) {
+      // Check if serial exists
+      if (!item.hasSerial(serialNo)) {
         throw Exception('Serial number not found');
       }
 
-      // Remove the serial
-      item.serials.removeAt(serialIndex);
+      // Remove the serial (this also updates the set and recalculates positions)
+      item.removeSerial(serialNo);
 
       // Decrement the quantity received
       item.qtyReceived -= 1;
-
-      // Recalculate positions (serial numbers)
-      for (int i = 0; i < item.serials.length; i++) {
-        item.serials[i] = ItemSerial(
-          serialNo: item.serials[i].serialNo,
-          sNo: i + 1,
-        );
-      }
 
       notifyListeners();
     } catch (e) {
@@ -695,7 +823,7 @@ class PurchaseOrderProvider with ChangeNotifier {
     if (order == null) return;
 
     for (var item in order.items) {
-      item.serials.clear();
+      item.clearSerials();
       item.qtyReceived = 0;
     }
     notifyListeners();

@@ -23,6 +23,28 @@ class OrderProvider with ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get error => _error;
   String searchQuery = '';
+  String? _selectedLocationCode;
+  String? _selectedCustomerName;
+  String? get selectedLocationCode => _selectedLocationCode;
+  String? get selectedCustomerName => _selectedCustomerName;
+  
+  // Get unique locations and customers from orders
+  List<String> get uniqueLocations {
+    final locations = _salesOrders
+        .map((o) => o.locationCode)
+        .where((loc) => loc != null && loc.isNotEmpty)
+        .toSet()
+        .toList();
+    locations.sort();
+    return locations;
+  }
+  
+  List<String> get uniqueCustomers {
+    final customers = _salesOrders.map((o) => o.customerName).toSet().toList();
+    customers.sort();
+    return customers;
+  }
+  
   bool isValidForPosting = true;
   String validationMessage = '';
   FlutterDataWedge? dataWedge;
@@ -64,6 +86,7 @@ class OrderProvider with ChangeNotifier {
       }
 
       _salesOrders = ordersMap.values.toList();
+      applyFilters();
     } catch (e) {
       _error = 'Failed to fetch orders: ${e.toString()}';
       rethrow;
@@ -73,11 +96,57 @@ class OrderProvider with ChangeNotifier {
     }
   }
 
+  void setLocationFilter(String? locationCode) {
+    _selectedLocationCode = locationCode;
+    applyFilters();
+  }
+
+  void setCustomerFilter(String? customerName) {
+    _selectedCustomerName = customerName;
+    applyFilters();
+  }
+
+  void clearFilters({bool notify = true}) {
+    _selectedLocationCode = null;
+    _selectedCustomerName = null;
+    searchQuery = '';
+    if (notify) {
+      applyFilters();
+    } else {
+      // Just update filtered list without notifying listeners
+      filteredSalesOrders = _salesOrders;
+    }
+  }
+
   void searchSalesOrders(String query) {
     searchQuery = query;
-    filteredSalesOrders = salesOrders.where((order) {
-      return order.soNumber.toLowerCase().contains(query.toLowerCase()) ||
-          order.customerName.toLowerCase().contains(query.toLowerCase());
+    applyFilters();
+  }
+
+  void applyFilters() {
+    filteredSalesOrders = _salesOrders.where((order) {
+      // Filter by SO# if search query is provided
+      if (searchQuery.isNotEmpty) {
+        if (!order.soNumber.toLowerCase().contains(searchQuery.toLowerCase())) {
+          return false;
+        }
+      }
+      
+      // Filter by location if selected
+      if (_selectedLocationCode != null && _selectedLocationCode!.isNotEmpty) {
+        if (order.locationCode != _selectedLocationCode) {
+          return false;
+        }
+      }
+      
+      // Filter by customer if selected
+      if (_selectedCustomerName != null && _selectedCustomerName!.isNotEmpty) {
+        if (order.customerName != _selectedCustomerName) {
+          return false;
+        }
+      }
+      
+      return true;
     }).toList();
     notifyListeners();
   }
@@ -89,7 +158,7 @@ class OrderProvider with ChangeNotifier {
 
       final result = await _sqlConnection.getData("""
       SELECT * FROM VW_DM_SODetails_Items 
-      WHERE SoNumber = '$soNumber'
+      WHERE SoNumber = '${_escapeSqlString(soNumber)}'
       ORDER BY Sno
       """);
 
@@ -101,7 +170,7 @@ class OrderProvider with ChangeNotifier {
         // If order not found in list, fetch header details
         final headerResult = await _sqlConnection.getData("""
         SELECT TOP 1 * FROM VW_DM_SODetails 
-        WHERE SoNumber = '$soNumber'
+        WHERE SoNumber = '${_escapeSqlString(soNumber)}'
         """);
 
         final headerData = jsonDecode(headerResult) as List;
@@ -127,11 +196,17 @@ class OrderProvider with ChangeNotifier {
     }
   }
 
+  // Helper function to escape SQL strings (replace single quotes with double single quotes)
+  String _escapeSqlString(String? value) {
+    if (value == null) return '';
+    return value.replaceAll("'", "''");
+  }
+
   Future<List<SalesOrder>> getSalesOrdersByLocation(String locationCode) async {
     try {
       final result = await _sqlConnection.getData("""
         SELECT * FROM VW_DM_SODetails 
-        WHERE LocCode = '$locationCode'
+        WHERE LocCode = '${_escapeSqlString(locationCode)}'
         ORDER BY SODate DESC
       """);
 
@@ -150,10 +225,20 @@ class OrderProvider with ChangeNotifier {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     final String companyCode = prefs.getString('companyCode') ?? "";
     final String username = prefs.getString("username") ?? "";
+    final String locationCode = prefs.getString('location') ?? "";
 
     if (order == null) {
-      print('Order not found for SO: $soNumber');
       setLoading(false);
+      final errorMsg = "Order not found for SO: $soNumber";
+      print('ERROR: $errorMsg');
+      await TelegramLogger.sendLog(
+        "❌ [OrderProvider] postDeliveryNote - Order Not Found\n"
+        "SO Number: $soNumber\n"
+        "Company Code: $companyCode\n"
+        "Location Code: $locationCode\n"
+        "Username: $username\n"
+        "Timestamp: ${DateTime.now().toIso8601String()}"
+      );
       AppAlerts.appToast(message: "Order not found for SO: $soNumber");
       return;
     }
@@ -189,7 +274,7 @@ class OrderProvider with ChangeNotifier {
         for (var serial in item.serials) {
           final checkSerialQuery = '''
         SELECT COUNT(*) as count FROM InvDetailSerials 
-        WHERE CmpyCode = '$companyCode' AND ItemCode = '${item.itemCode}' AND SerialNo = '${serial.serialNo}'
+        WHERE CmpyCode = '${_escapeSqlString(companyCode)}' AND ItemCode = '${_escapeSqlString(item.itemCode)}' AND SerialNo = '${_escapeSqlString(serial.serialNo)}'
       ''';
 
           final resultString = await _sqlConnection.getData(checkSerialQuery);
@@ -205,15 +290,37 @@ class OrderProvider with ChangeNotifier {
 
     if (!isValidForPosting) {
       setLoading(false);
-      AppAlerts.appToast(
-          message: "Delivery note validation failed: \n $validationMessage");
+      final errorMsg = "Delivery note validation failed: \n $validationMessage";
+      print('ERROR: $errorMsg');
+      await TelegramLogger.sendLog(
+        "❌ [OrderProvider] postDeliveryNote - Validation Failed\n"
+        "SO Number: $soNumber\n"
+        "Company Code: $companyCode\n"
+        "Location Code: $locationCode\n"
+        "Username: $username\n"
+        "Validation Errors:\n$validationMessage\n"
+        "Timestamp: ${DateTime.now().toIso8601String()}"
+      );
+      AppAlerts.appToast(message: errorMsg);
       return;
     }
 
     // Check if there are any items with qtyIssued > 0 to process
     if (itemsToProcess.isEmpty) {
       setLoading(false);
-      AppAlerts.appToast(message: "No items with quantity issued to process");
+      final errorMsg = "No items with quantity issued to process";
+      print('ERROR: $errorMsg');
+      await TelegramLogger.sendLog(
+        "❌ [OrderProvider] postDeliveryNote - No Items to Process\n"
+        "SO Number: $soNumber\n"
+        "Company Code: $companyCode\n"
+        "Location Code: $locationCode\n"
+        "Username: $username\n"
+        "Total Items in Order: ${order.items.length}\n"
+        "Items with qtyIssued > 0: ${itemsToProcess.length}\n"
+        "Timestamp: ${DateTime.now().toIso8601String()}"
+      );
+      AppAlerts.appToast(message: errorMsg);
       return;
     }
 
@@ -223,7 +330,7 @@ class OrderProvider with ChangeNotifier {
       final deliveryNoteHeader = DeliveryNoteHeader(
         cmpyCode: order.companyCode,
         dnNumber: nextDnNumber,
-        locCode: order.locationCode,
+        locCode: locationCode,
         dates: DateTime.now(),
         customerCode: order.customerCode,
         salesmanCode: order.salesmanCode,
@@ -249,6 +356,9 @@ class OrderProvider with ChangeNotifier {
         dyType: 'D',
       );
 
+      // Construct time string for SQL
+      final timeString = '${deliveryNoteHeader.dTime.hour.toString().padLeft(2, '0')}:${deliveryNoteHeader.dTime.minute.toString().padLeft(2, '0')}:00';
+
       final headerQuery = '''
     INSERT INTO DNoteHeader (
       Cmpycode, DnNumber, LocCode, Dates, CustomerCode, SalesmanCode, 
@@ -256,30 +366,30 @@ class OrderProvider with ChangeNotifier {
       DnType, Qty, DTime, LoginUser, CreditLimitAmount, OutstandingBalance, 
       GrossAmount, Narration, CommissionYN, Supplier, DYType
     ) VALUES (
-      '${deliveryNoteHeader.cmpyCode}', 
-      '${deliveryNoteHeader.dnNumber}', 
-      '${deliveryNoteHeader.locCode}', 
-      CONVERT(DATETIME, '${DateFormat('yyyy-MM-dd').format(deliveryNoteHeader.dates)}', 120), 
-      '${deliveryNoteHeader.customerCode}', 
-      '${deliveryNoteHeader.salesmanCode}',
-      '${deliveryNoteHeader.soNumber}', 
-      '${deliveryNoteHeader.refNo.toString() == "null" ? "" : deliveryNoteHeader.refNo.toString()}', 
-      '${deliveryNoteHeader.status}', 
-      '${deliveryNoteHeader.invStat}', 
+      '${_escapeSqlString(deliveryNoteHeader.cmpyCode)}', 
+      '${_escapeSqlString(deliveryNoteHeader.dnNumber)}', 
+      '${_escapeSqlString(deliveryNoteHeader.locCode)}', 
+      CONVERT(DATETIME, '${_escapeSqlString(DateFormat('yyyy-MM-dd').format(deliveryNoteHeader.dates))}', 120), 
+      '${_escapeSqlString(deliveryNoteHeader.customerCode)}', 
+      '${_escapeSqlString(deliveryNoteHeader.salesmanCode)}',
+      '${_escapeSqlString(deliveryNoteHeader.soNumber)}', 
+      '${_escapeSqlString(deliveryNoteHeader.refNo.toString() == "null" ? "" : deliveryNoteHeader.refNo.toString())}', 
+      '${_escapeSqlString(deliveryNoteHeader.status)}', 
+      '${_escapeSqlString(deliveryNoteHeader.invStat)}', 
       ${deliveryNoteHeader.discount}, 
-      '${deliveryNoteHeader.curCode}', 
+      '${_escapeSqlString(deliveryNoteHeader.curCode)}', 
       ${deliveryNoteHeader.exRate},
-      '${deliveryNoteHeader.dnType}', 
+      '${_escapeSqlString(deliveryNoteHeader.dnType)}', 
       ${deliveryNoteHeader.qty}, 
-      CONVERT(TIME, '${deliveryNoteHeader.dTime.hour.toString().padLeft(2, '0')}:${deliveryNoteHeader.dTime.minute.toString().padLeft(2, '0')}:00'), 
-      '${deliveryNoteHeader.loginUser}', 
+      CONVERT(TIME, '${_escapeSqlString(timeString)}'), 
+      '${_escapeSqlString(deliveryNoteHeader.loginUser)}', 
       ${deliveryNoteHeader.creditLimitAmount}, 
       ${deliveryNoteHeader.outstandingBalance},
       ${deliveryNoteHeader.grossAmount}, 
-      '${deliveryNoteHeader.narration}', 
-      '${deliveryNoteHeader.commissionYN}', 
-      '${deliveryNoteHeader.supplier}', 
-      '${deliveryNoteHeader.dyType}'
+      '${_escapeSqlString(deliveryNoteHeader.narration)}', 
+      '${_escapeSqlString(deliveryNoteHeader.commissionYN)}', 
+      '${_escapeSqlString(deliveryNoteHeader.supplier)}', 
+      '${_escapeSqlString(deliveryNoteHeader.dyType)}'
     )
     ''';
 
@@ -295,7 +405,7 @@ class OrderProvider with ChangeNotifier {
         final detail = DeliveryNoteDetail(
           cmpyCode: order.companyCode,
           dnNumber: deliveryNoteHeader.dnNumber,
-          locCode: order.locationCode,
+          locCode: locationCode,
           sno: bsno,
           itemCode: item.itemCode,
           barcode: null,
@@ -336,14 +446,14 @@ class OrderProvider with ChangeNotifier {
       TotReservedQty, BSno, SoQty, TaxCode, TaxPercentage, BinCode, 
       CommAmount, Commission
     ) VALUES (
-      '${detail.cmpyCode}', 
-      '${detail.dnNumber}', 
-      '${detail.locCode}', 
+      '${_escapeSqlString(detail.cmpyCode)}', 
+      '${_escapeSqlString(detail.dnNumber)}', 
+      '${_escapeSqlString(detail.locCode)}', 
       ${detail.sno}, 
-      '${detail.itemCode}', 
-      ${detail.barcode != null ? "'${detail.barcode}'" : 'NULL'}, 
-      '${detail.description}',
-      '${detail.unit}', 
+      '${_escapeSqlString(detail.itemCode)}', 
+      ${detail.barcode != null ? "'${_escapeSqlString(detail.barcode)}'" : 'NULL'}, 
+      '${_escapeSqlString(detail.description)}',
+      '${_escapeSqlString(detail.unit)}', 
       ${detail.qtyOrdered}, 
       ${detail.qtyIssued}, 
       ${detail.unitPrice}, 
@@ -352,20 +462,20 @@ class OrderProvider with ChangeNotifier {
       ${detail.discount}, 
       ${detail.closingStock}, 
       ${detail.avgCost}, 
-      ${detail.srNo != null ? "'${detail.srNo}'" : 'NULL'}, 
-      '${detail.soNumber}', 
+      ${detail.srNo != null ? "'${_escapeSqlString(detail.srNo)}'" : 'NULL'}, 
+      '${_escapeSqlString(detail.soNumber)}', 
       ${detail.cogsamt},
       ${detail.nonInventory ? 1 : 0}, 
       ${detail.isFreeofCost ? 1 : 0}, 
-      ${detail.parentItem != null ? "'${detail.parentItem}'" : 'NULL'}, 
+      ${detail.parentItem != null ? "'${_escapeSqlString(detail.parentItem)}'" : 'NULL'}, 
       ${detail.qtyReserved}, 
       ${detail.poQty},
       ${detail.totReservedQty}, 
-      ${detail.bSno != null ? "'${detail.bSno}'" : 'NULL'}, 
+      ${detail.bSno != null ? "'${_escapeSqlString(detail.bSno)}'" : 'NULL'}, 
       ${detail.soQty}, 
-      ${detail.taxCode != null ? "'${detail.taxCode}'" : 'NULL'}, 
+      ${detail.taxCode != null ? "'${_escapeSqlString(detail.taxCode)}'" : 'NULL'}, 
       ${detail.taxPercentage},
-      ${detail.binCode != null ? "'${detail.binCode}'" : 'NULL'}, 
+      ${detail.binCode != null ? "'${_escapeSqlString(detail.binCode)}'" : 'NULL'}, 
       ${detail.commAmount ?? 'NULL'}, 
       ${detail.commission ?? 'NULL'}
     )
@@ -379,10 +489,10 @@ class OrderProvider with ChangeNotifier {
         final updateSoDetailQuery = '''
       UPDATE SoDetail 
       SET QtyIssued = QtyIssued + ${item.qtyIssued}, 
-          SrNo = '${bsno.toString()}'
-      WHERE CmpyCode = '${order.companyCode}' 
-        AND SoNumber = '${order.soNumber}' 
-        AND ItemCode = '${item.itemCode}' 
+          SrNo = '${_escapeSqlString(bsno.toString())}'
+      WHERE CmpyCode = '${_escapeSqlString(order.companyCode)}' 
+        AND SoNumber = '${_escapeSqlString(order.soNumber)}' 
+        AND ItemCode = '${_escapeSqlString(item.itemCode)}' 
       ''';
 
         print('Updating SoDetail for item ${item.itemCode}...');
@@ -395,13 +505,13 @@ class OrderProvider with ChangeNotifier {
 
           for (var serial in item.serials) {
             final value = '''
-      ('${order.companyCode}', 
-       '${deliveryNoteHeader.dnNumber}', 
-       '${globalSerialSno.toString()}', 
-       '${item.itemCode}', 
-       '${serial.serialNo}', 
-       '${bsno.toString()}', 
-       '${deliveryNoteHeader.dnNumber}', 
+      ('${_escapeSqlString(order.companyCode)}', 
+       '${_escapeSqlString(deliveryNoteHeader.dnNumber)}', 
+       '${_escapeSqlString(globalSerialSno.toString())}', 
+       '${_escapeSqlString(item.itemCode)}', 
+       '${_escapeSqlString(serial.serialNo)}', 
+       '${_escapeSqlString(bsno.toString())}', 
+       '${_escapeSqlString(deliveryNoteHeader.dnNumber)}', 
        ${false ? 1 : 0})
     ''';
             values.add(value);
@@ -436,7 +546,7 @@ class OrderProvider with ChangeNotifier {
     UPDATE SoHeader 
     SET Status = '${isFullyDelivered ? 'C' : 'O'}', 
         DelStat = 'Y'
-    WHERE SoNumber = '${order.soNumber}' AND CmpyCode = '${order.companyCode}'
+    WHERE SoNumber = '${_escapeSqlString(order.soNumber)}' AND CmpyCode = '${_escapeSqlString(order.companyCode)}'
     ''';
 
       print('Updating SO status...');
@@ -453,11 +563,43 @@ class OrderProvider with ChangeNotifier {
       Navigator.pop(context);
     } catch (e, stackTrace) {
       setLoading(false);
+      final errorMsg = "Failed to post delivery note: ${e.toString()}";
       print('ERROR in postDeliveryNote:');
       print('Message: $e');
       print('Stack trace: $stackTrace');
-      AppAlerts.appToast(
-          message: "Failed to post delivery note: ${e.toString()}");
+      
+      // Build detailed error log
+      String errorDetails = "❌ [OrderProvider] postDeliveryNote - Exception\n"
+          "SO Number: $soNumber\n"
+          "Company Code: $companyCode\n"
+          "Location Code: $locationCode\n"
+          "Username: $username\n"
+          "Error Type: ${e.runtimeType}\n"
+          "Error Message: $e\n"
+          "Stack Trace:\n$stackTrace\n";
+      
+      // Add order details if available
+      if (order != null) {
+        errorDetails += "Order Details:\n"
+            "  Customer: ${order.customerName}\n"
+            "  Items Count: ${order.items.length}\n"
+            "  Items to Process: ${itemsToProcess.length}\n";
+        
+        // Add item details
+        if (itemsToProcess.isNotEmpty) {
+          errorDetails += "  Items:\n";
+          for (var item in itemsToProcess) {
+            errorDetails += "    - ${item.itemCode} (${item.itemName}): "
+                "Ordered: ${item.qtyOrdered}, Issued: ${item.qtyIssued}, "
+                "Stock: ${item.stockQty}, Serialized: ${item.serialYN}\n";
+          }
+        }
+      }
+      
+      errorDetails += "Timestamp: ${DateTime.now().toIso8601String()}";
+      
+      await TelegramLogger.sendLog(errorDetails);
+      AppAlerts.appToast(message: errorMsg);
     } finally {
       setLoading(false);
     }
@@ -600,12 +742,9 @@ class OrderProvider with ChangeNotifier {
         }
       }
 
-      final escapedSerial = serialNo.replaceAll("'", "''");
-      final escapedItemCode = itemCode.replaceAll("'", "''");
-
       final result = await _sqlConnection.getData(
           "SELECT TOP 1 1 FROM InvDetailSerials "
-          "WHERE SerialNo = '$escapedSerial' AND ItemCode = '$escapedItemCode'");
+          "WHERE SerialNo = '${_escapeSqlString(serialNo)}' AND ItemCode = '${_escapeSqlString(itemCode)}'");
 
       return result.isEmpty || result == "[]";
     } catch (e) {
@@ -753,26 +892,16 @@ class OrderProvider with ChangeNotifier {
         orElse: () => throw Exception('Item not found'),
       );
 
-      // Find the serial to remove
-      final serialIndex =
-          item.serials.indexWhere((s) => s.serialNo == serialNo);
-      if (serialIndex == -1) {
+      // Check if serial exists
+      if (!item.hasSerial(serialNo)) {
         throw Exception('Serial number not found');
       }
 
-      // Remove the serial
-      item.serials.removeAt(serialIndex);
+      // Remove the serial (this also updates the set and recalculates positions)
+      item.removeSerial(serialNo);
 
       // Decrement the quantity issued
       item.qtyIssued -= 1;
-
-      // Recalculate positions (serial numbers)
-      for (int i = 0; i < item.serials.length; i++) {
-        item.serials[i] = ItemSerial(
-          serialNo: item.serials[i].serialNo,
-          sNo: i + 1,
-        );
-      }
 
       notifyListeners();
     } catch (e) {

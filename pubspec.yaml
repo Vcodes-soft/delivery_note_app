@@ -43,6 +43,7 @@ dependencies:
   intl:
   lottie:
   dio:
+  advanced_searchable_dropdown: ^2.1.0
 
 dev_dependencies:
   flutter_test:

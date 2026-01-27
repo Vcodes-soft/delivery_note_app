@@ -1,5 +1,6 @@
 import 'package:delivery_note_app/providers/auth_provider.dart';
 import 'package:delivery_note_app/providers/order_provider.dart';
+import 'package:delivery_note_app/utils/app_constants.dart';
 import 'package:delivery_note_app/widgets/dashboard_card.dart';
 import 'package:delivery_note_app/widgets/widgets.dart';
 import 'package:flutter/material.dart';
@@ -14,13 +15,37 @@ class DashboardScreen extends StatefulWidget {
 
 class _DashboardScreenState extends State<DashboardScreen> {
   final GlobalKey<ScaffoldState> scaffoldKey = GlobalKey();
+  bool _isDataWedgeMode = false;
 
   @override
   void initState() {
     super.initState();
+    _loadScanningMode();
     WidgetsBinding.instance.addPostFrameCallback((callback) {
       // Provider.of<AuthProvider>(context, listen: false).getCurrentAddress();
     });
+  }
+
+  Future<void> _loadScanningMode() async {
+    final currentMode = AppConstants.scanningMode;
+    setState(() {
+      _isDataWedgeMode = currentMode == 'datawedge';
+    });
+  }
+
+  Future<void> _toggleScanningMode(bool value) async {
+    final newMode = value ? 'datawedge' : 'keystroke';
+    await AppConstants.setScanningMode(newMode);
+    setState(() {
+      _isDataWedgeMode = value;
+    });
+    // Show feedback to user
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Scanning mode changed to: ${value ? "DataWedge" : "Keystroke"}'),
+        duration: Duration(seconds: 2),
+      ),
+    );
   }
 
   @override
@@ -60,6 +85,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     SizedBox(height: 13),
                   ],
                 ),
+              ),
+            ),
+            Divider(),
+            ListTile(
+              leading: const Icon(Icons.qr_code_scanner),
+              title: const Text('Scanning Mode'),
+              subtitle: Text(_isDataWedgeMode ? 'DataWedge' : 'Keystroke'),
+              trailing: Switch(
+                value: _isDataWedgeMode,
+                onChanged: _toggleScanningMode,
               ),
             ),
             Divider(),

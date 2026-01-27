@@ -92,7 +92,7 @@ class _AddLotScreenState extends State<AddLotScreen> {
   @override
   void dispose() {
     _scanDebounceTimer?.cancel();
-    _stopContinuousScanning();
+    _stopContinuousScanning(isDisposing: true);
     _scrollController.dispose();
     _serialController.dispose();
     _editSerialController.dispose();
@@ -143,13 +143,15 @@ class _AddLotScreenState extends State<AddLotScreen> {
     }
   }
 
-  Future<void> _stopContinuousScanning() async {
+  Future<void> _stopContinuousScanning({bool isDisposing = false}) async {
     try {
       if (AppConstants.scanningMode == 'keystroke') {
         // For keystroke mode, just unfocus the field
         _keystrokeScanFocusNode.unfocus();
-        if (mounted) {
+        if (!isDisposing && mounted) {
           setState(() => _isScanning = false);
+        } else {
+          _isScanning = false;
         }
       } else {
         final orderProvider = Provider.of<OrderProvider>(context, listen: false);
@@ -160,8 +162,10 @@ class _AddLotScreenState extends State<AddLotScreen> {
           debugPrint("Error stopping scanner: $e");
           await TelegramLogger.sendLog("❌ [AddLotScreen] Error stopping scanner\nError: $e\nStack: $stackTrace");
         }
-        if (mounted) {
+        if (!isDisposing && mounted) {
           setState(() => _isScanning = false);
+        } else {
+          _isScanning = false;
         }
       }
     } catch (e, stackTrace) {
@@ -849,7 +853,7 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
   @override
   void dispose() {
     _scanDebounceTimer?.cancel();
-    _stopContinuousScanning();
+    _stopContinuousScanning(isDisposing: true);
     _scrollController.dispose();
     _serialController.dispose();
     _editSerialController.dispose();
@@ -900,13 +904,15 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
     }
   }
 
-  Future<void> _stopContinuousScanning() async {
+  Future<void> _stopContinuousScanning({bool isDisposing = false}) async {
     try {
       if (AppConstants.scanningMode == 'keystroke') {
         // For keystroke mode, just unfocus the field
         _keystrokeScanFocusNode.unfocus();
-        if (mounted) {
+        if (!isDisposing && mounted) {
           setState(() => _isScanning = false);
+        } else {
+          _isScanning = false;
         }
       } else {
         final orderProvider = Provider.of<PurchaseOrderProvider>(context, listen: false);
@@ -917,8 +923,10 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
           debugPrint("Error stopping scanner: $e");
           await TelegramLogger.sendLog("❌ [POAddLotScreen] Error stopping scanner\nError: $e\nStack: $stackTrace");
         }
-        if (mounted) {
+        if (!isDisposing && mounted) {
           setState(() => _isScanning = false);
+        } else {
+          _isScanning = false;
         }
       }
     } catch (e, stackTrace) {
