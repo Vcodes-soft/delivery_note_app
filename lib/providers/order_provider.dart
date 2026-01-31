@@ -742,9 +742,14 @@ class OrderProvider with ChangeNotifier {
         }
       }
 
+      // Get company code from SharedPreferences
+      final prefs = await SharedPreferences.getInstance();
+      final String companyCode = prefs.getString('companyCode') ?? "";
+
+      // DATABASE CHECK - Check for ItemCode + SerialNo combination within the same company
       final result = await _sqlConnection.getData(
           "SELECT TOP 1 1 FROM InvDetailSerials "
-          "WHERE SerialNo = '${_escapeSqlString(serialNo)}' AND ItemCode = '${_escapeSqlString(itemCode)}'");
+          "WHERE CmpyCode = '${_escapeSqlString(companyCode)}' AND ItemCode = '${_escapeSqlString(itemCode)}' AND SerialNo = '${_escapeSqlString(serialNo)}'");
 
       return result.isEmpty || result == "[]";
     } catch (e) {
@@ -847,7 +852,7 @@ class OrderProvider with ChangeNotifier {
           await isSerialUnique(itemCode: itemCode, serialNo: serialNo);
       if (!isUnique) {
         return AppAlerts.appToast(
-            message: 'Serial number $serialNo already exists in another item');
+            message: 'Serial number $serialNo already exists for item $itemCode');
       }
 
       if (!item.nonInventory) {

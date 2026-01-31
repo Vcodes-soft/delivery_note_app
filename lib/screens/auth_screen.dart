@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:delivery_note_app/providers/auth_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key});
@@ -22,12 +23,21 @@ class _AuthScreenState extends State<AuthScreen> {
   bool _isLoadingUserData = true;
   bool _obscurePassword = true;
   List<User> _matchingUsers = [];
+  String _appVersion = '';
 
   @override
   void initState() {
     super.initState();
+    _loadAppVersion();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _initializeScreen();
+    });
+  }
+
+  Future<void> _loadAppVersion() async {
+    final packageInfo = await PackageInfo.fromPlatform();
+    setState(() {
+      _appVersion = 'v${packageInfo.version}+${packageInfo.buildNumber}';
     });
   }
 
@@ -359,6 +369,15 @@ class _AuthScreenState extends State<AuthScreen> {
                         child: _isLoading
                             ? const CircularProgressIndicator()
                             : const Text('Login'),
+                      ),
+                      const SizedBox(height: 24),
+                      Text(
+                        _appVersion.isNotEmpty ? _appVersion : 'Loading...',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey.shade600,
+                          fontWeight: FontWeight.w500,
+                        ),
                       ),
                     ],
                   ),

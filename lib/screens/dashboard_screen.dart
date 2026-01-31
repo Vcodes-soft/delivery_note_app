@@ -5,6 +5,7 @@ import 'package:delivery_note_app/widgets/dashboard_card.dart';
 import 'package:delivery_note_app/widgets/widgets.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -16,13 +17,22 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen> {
   final GlobalKey<ScaffoldState> scaffoldKey = GlobalKey();
   bool _isDataWedgeMode = false;
+  String _appVersion = '';
 
   @override
   void initState() {
     super.initState();
     _loadScanningMode();
+    _loadAppVersion();
     WidgetsBinding.instance.addPostFrameCallback((callback) {
       // Provider.of<AuthProvider>(context, listen: false).getCurrentAddress();
+    });
+  }
+
+  Future<void> _loadAppVersion() async {
+    final packageInfo = await PackageInfo.fromPlatform();
+    setState(() {
+      _appVersion = 'v${packageInfo.version}+${packageInfo.buildNumber}';
     });
   }
 
@@ -55,56 +65,75 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return Scaffold(
       key: scaffoldKey,
       endDrawer: Drawer(
-        child: ListView(
-          padding: EdgeInsets.zero,
+        child: Column(
           children: [
-            // DrawerHeader(child: SizedBox()),
-            Image.asset("assets/bg/drawer_bg.jpeg"),
-            Card(
-              color: Color.fromRGBO(255, 213, 3, 1.0),
-              child: Padding(
-                padding: const EdgeInsets.all(8.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(Icons.person, color: Colors.black),
-                        SizedBox(width: 10),
-                        Text(
-                          'Welcome ${authProvider.username}',
-                          style: TextStyle(
-                            color: Colors.black,
-                            fontSize: 19,
-                            fontStyle: FontStyle.normal,
-                            fontWeight: FontWeight.bold,
+            Expanded(
+              child: ListView(
+                padding: EdgeInsets.zero,
+                children: [
+                  // DrawerHeader(child: SizedBox()),
+                  Image.asset("assets/bg/drawer_bg.jpeg"),
+                  Card(
+                    color: Color.fromRGBO(255, 213, 3, 1.0),
+                    child: Padding(
+                      padding: const EdgeInsets.all(8.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(Icons.person, color: Colors.black),
+                              SizedBox(width: 10),
+                              Text(
+                                'Welcome ${authProvider.username}',
+                                style: TextStyle(
+                                  color: Colors.black,
+                                  fontSize: 19,
+                                  fontStyle: FontStyle.normal,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
                           ),
-                        ),
-                      ],
+                          SizedBox(height: 13),
+                        ],
+                      ),
                     ),
-                    SizedBox(height: 13),
-                  ],
+                  ),
+                  Divider(),
+                  ListTile(
+                    leading: const Icon(Icons.qr_code_scanner),
+                    title: const Text('Scanning Mode'),
+                    subtitle: Text(_isDataWedgeMode ? 'DataWedge' : 'Keystroke'),
+                    trailing: Switch(
+                      value: _isDataWedgeMode,
+                      onChanged: _toggleScanningMode,
+                    ),
+                  ),
+                  Divider(),
+                  ListTile(
+                    leading: const Icon(Icons.logout),
+                    title: const Text('Logout'),
+                    onTap: () {
+                      Provider.of<AuthProvider>(context, listen: false)
+                          .logout(context);
+                    },
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Center(
+                child: Text(
+                  _appVersion.isNotEmpty ? _appVersion : 'Loading...',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey.shade600,
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
               ),
-            ),
-            Divider(),
-            ListTile(
-              leading: const Icon(Icons.qr_code_scanner),
-              title: const Text('Scanning Mode'),
-              subtitle: Text(_isDataWedgeMode ? 'DataWedge' : 'Keystroke'),
-              trailing: Switch(
-                value: _isDataWedgeMode,
-                onChanged: _toggleScanningMode,
-              ),
-            ),
-            Divider(),
-            ListTile(
-              leading: const Icon(Icons.logout),
-              title: const Text('Logout'),
-              onTap: () {
-                Provider.of<AuthProvider>(context, listen: false)
-                    .logout(context);
-              },
             ),
           ],
         ),

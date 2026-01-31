@@ -154,14 +154,26 @@ class _AddLotScreenState extends State<AddLotScreen> {
           _isScanning = false;
         }
       } else {
-        final orderProvider = Provider.of<OrderProvider>(context, listen: false);
-        orderProvider.removeListener(_handleScanUpdate);
-        try {
-          await orderProvider.stopScanner();
-        } catch (e, stackTrace) {
-          debugPrint("Error stopping scanner: $e");
-          await TelegramLogger.sendLog("❌ [AddLotScreen] Error stopping scanner\nError: $e\nStack: $stackTrace");
+        // Check if widget is still mounted and context is valid before accessing Provider
+        if (!mounted) {
+          _isScanning = false;
+          return;
         }
+        
+        try {
+          final orderProvider = Provider.of<OrderProvider>(context, listen: false);
+          orderProvider.removeListener(_handleScanUpdate);
+          try {
+            await orderProvider.stopScanner();
+          } catch (e, stackTrace) {
+            debugPrint("Error stopping scanner: $e");
+            await TelegramLogger.sendLog("❌ [AddLotScreen] Error stopping scanner\nError: $e\nStack: $stackTrace");
+          }
+        } catch (e) {
+          // Provider is no longer available (widget is being disposed)
+          debugPrint("Provider no longer available during dispose: $e");
+        }
+        
         if (!isDisposing && mounted) {
           setState(() => _isScanning = false);
         } else {
@@ -915,14 +927,26 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
           _isScanning = false;
         }
       } else {
-        final orderProvider = Provider.of<PurchaseOrderProvider>(context, listen: false);
-        orderProvider.removeListener(_handleScanUpdate);
-        try {
-          await orderProvider.stopScanner();
-        } catch (e, stackTrace) {
-          debugPrint("Error stopping scanner: $e");
-          await TelegramLogger.sendLog("❌ [POAddLotScreen] Error stopping scanner\nError: $e\nStack: $stackTrace");
+        // Check if widget is still mounted and context is valid before accessing Provider
+        if (!mounted) {
+          _isScanning = false;
+          return;
         }
+        
+        try {
+          final orderProvider = Provider.of<PurchaseOrderProvider>(context, listen: false);
+          orderProvider.removeListener(_handleScanUpdate);
+          try {
+            await orderProvider.stopScanner();
+          } catch (e, stackTrace) {
+            debugPrint("Error stopping scanner: $e");
+            await TelegramLogger.sendLog("❌ [POAddLotScreen] Error stopping scanner\nError: $e\nStack: $stackTrace");
+          }
+        } catch (e) {
+          // Provider is no longer available (widget is being disposed)
+          debugPrint("Provider no longer available during dispose: $e");
+        }
+        
         if (!isDisposing && mounted) {
           setState(() => _isScanning = false);
         } else {
