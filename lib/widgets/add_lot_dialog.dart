@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:delivery_note_app/providers/order_provider.dart';
+import 'package:delivery_note_app/services/app_logger.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -30,7 +31,8 @@ class AddLotScreen extends StatefulWidget {
 class _AddLotScreenState extends State<AddLotScreen> {
   final TextEditingController _serialController = TextEditingController();
   final TextEditingController _editSerialController = TextEditingController();
-  final TextEditingController _keystrokeScanController = TextEditingController();
+  final TextEditingController _keystrokeScanController =
+      TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final FocusNode _keystrokeScanFocusNode = FocusNode();
   final FocusNode _manualEntryFocusNode = FocusNode();
@@ -44,9 +46,17 @@ class _AddLotScreenState extends State<AddLotScreen> {
   @override
   void initState() {
     super.initState();
-    // Ensure widget is mounted before starting scanning
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
+        AppLogger.log(
+          providerName: 'AddLotScreen',
+          screenName: 'AddLotScreen',
+          functionName: 'initState',
+          action: 'Add Lot dialog opened',
+          additionalInfo:
+              'SO: ${widget.soNumber}, Item: ${widget.itemCode}, Ordered Qty: ${widget.orderedQty}, Stock: ${widget.availableStock}, Scanning Mode: ${AppConstants.scanningMode}',
+        );
+
         if (AppConstants.scanningMode == 'keystroke') {
           _initializeKeystrokeScanning();
         } else {
@@ -55,7 +65,6 @@ class _AddLotScreenState extends State<AddLotScreen> {
       }
     });
   }
-
 
   void _initializeKeystrokeScanning() {
     // Focus the invisible text field for keystroke scanning
@@ -66,7 +75,9 @@ class _AddLotScreenState extends State<AddLotScreen> {
     _keystrokeScanFocusNode.addListener(() {
       if (!_keystrokeScanFocusNode.hasFocus) {
         Future.delayed(const Duration(milliseconds: 100), () {
-          if (mounted && !_manualEntryFocusNode.hasFocus && !_editSerialFocusNode.hasFocus) {
+          if (mounted &&
+              !_manualEntryFocusNode.hasFocus &&
+              !_editSerialFocusNode.hasFocus) {
             // Only regain focus if manual entry and edit are not being used
             _keystrokeScanFocusNode.requestFocus();
             SystemChannels.textInput.invokeMethod('TextInput.hide');
@@ -81,7 +92,9 @@ class _AddLotScreenState extends State<AddLotScreen> {
   void _returnFocusToScanner() {
     if (AppConstants.scanningMode == 'keystroke' && mounted) {
       Future.delayed(const Duration(milliseconds: 100), () {
-        if (mounted && !_manualEntryFocusNode.hasFocus && !_editSerialFocusNode.hasFocus) {
+        if (mounted &&
+            !_manualEntryFocusNode.hasFocus &&
+            !_editSerialFocusNode.hasFocus) {
           _keystrokeScanFocusNode.requestFocus();
           SystemChannels.textInput.invokeMethod('TextInput.hide');
         }
@@ -137,7 +150,8 @@ class _AddLotScreenState extends State<AddLotScreen> {
         if (mounted) {
           setState(() => _isScanning = false);
         }
-        await TelegramLogger.sendLog("❌ [AddLotScreen] Failed to start continuous scanning\nError: $e\nStack: $stackTrace");
+        await TelegramLogger.sendLog(
+            "❌ [AddLotScreen] Failed to start continuous scanning\nError: $e\nStack: $stackTrace");
         AppAlerts.appToast(message: 'Failed to start scanner: ${e.toString()}');
       }
     }
@@ -159,21 +173,23 @@ class _AddLotScreenState extends State<AddLotScreen> {
           _isScanning = false;
           return;
         }
-        
+
         try {
-          final orderProvider = Provider.of<OrderProvider>(context, listen: false);
+          final orderProvider =
+              Provider.of<OrderProvider>(context, listen: false);
           orderProvider.removeListener(_handleScanUpdate);
           try {
             await orderProvider.stopScanner();
           } catch (e, stackTrace) {
             debugPrint("Error stopping scanner: $e");
-            await TelegramLogger.sendLog("❌ [AddLotScreen] Error stopping scanner\nError: $e\nStack: $stackTrace");
+            await TelegramLogger.sendLog(
+                "❌ [AddLotScreen] Error stopping scanner\nError: $e\nStack: $stackTrace");
           }
         } catch (e) {
           // Provider is no longer available (widget is being disposed)
           debugPrint("Provider no longer available during dispose: $e");
         }
-        
+
         if (!isDisposing && mounted) {
           setState(() => _isScanning = false);
         } else {
@@ -181,7 +197,8 @@ class _AddLotScreenState extends State<AddLotScreen> {
         }
       }
     } catch (e, stackTrace) {
-      await TelegramLogger.sendLog("❌ [AddLotScreen] Error in _stopContinuousScanning\nError: $e\nStack: $stackTrace");
+      await TelegramLogger.sendLog(
+          "❌ [AddLotScreen] Error in _stopContinuousScanning\nError: $e\nStack: $stackTrace");
     }
   }
 
@@ -196,7 +213,8 @@ class _AddLotScreenState extends State<AddLotScreen> {
     }
   }
 
-  Future<void> _handleScannedBarcode(BuildContext context, String barcode) async {
+  Future<void> _handleScannedBarcode(
+      BuildContext context, String barcode) async {
     try {
       await _addSerial(context, barcode);
     } catch (e) {
@@ -208,17 +226,19 @@ class _AddLotScreenState extends State<AddLotScreen> {
 
   Future<void> _processKeystrokeScan(String scannedValue) async {
     if (_isProcessingScan || scannedValue.isEmpty) return;
-    
+
     _isProcessingScan = true;
     _scanDebounceTimer?.cancel();
-    
+
     try {
       await _handleScannedBarcode(context, scannedValue);
       if (mounted) {
         _keystrokeScanController.clear();
         // Ensure focus is maintained for continuous scanning
         Future.delayed(const Duration(milliseconds: 10), () {
-          if (mounted && !_manualEntryFocusNode.hasFocus && !_editSerialFocusNode.hasFocus) {
+          if (mounted &&
+              !_manualEntryFocusNode.hasFocus &&
+              !_editSerialFocusNode.hasFocus) {
             _keystrokeScanFocusNode.requestFocus();
           }
         });
@@ -343,7 +363,7 @@ class _AddLotScreenState extends State<AddLotScreen> {
     if (hasDuplicates) {
       // Show alert about duplicates with positions
       final duplicatesWithPositions =
-      orderProvider.getDuplicateSerialsWithPositions(
+          orderProvider.getDuplicateSerialsWithPositions(
         soNumber: widget.soNumber,
         itemCode: widget.itemCode,
       );
@@ -357,21 +377,18 @@ class _AddLotScreenState extends State<AddLotScreen> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                    'The following serial numbers are duplicated:'),
+                const Text('The following serial numbers are duplicated:'),
                 const SizedBox(height: 10),
                 ...duplicatesWithPositions.entries.map((entry) {
                   final serial = entry.key;
                   final positions = entry.value;
                   return Text(
                     '• $serial (positions: ${positions.join(', ')})',
-                    style: const TextStyle(
-                        fontWeight: FontWeight.bold),
+                    style: const TextStyle(fontWeight: FontWeight.bold),
                   );
                 }).toList(),
                 const SizedBox(height: 10),
-                const Text(
-                    'Please remove duplicates before proceeding.'),
+                const Text('Please remove duplicates before proceeding.'),
               ],
             ),
           ),
@@ -386,8 +403,16 @@ class _AddLotScreenState extends State<AddLotScreen> {
       return false; // Don't allow navigation
     }
 
-    // If no duplicates, allow navigation
     await _stopContinuousScanning();
+
+    AppLogger.log(
+      providerName: 'AddLotScreen',
+      screenName: 'AddLotScreen',
+      functionName: '_validateAndNavigateBack_SO',
+      action: 'Add Lot dialog closed (SO)',
+      additionalInfo: 'SO: ${widget.soNumber}, Item: ${widget.itemCode}',
+    );
+
     return true;
   }
 
@@ -396,7 +421,7 @@ class _AddLotScreenState extends State<AddLotScreen> {
     final orderProvider = Provider.of<OrderProvider>(context);
     final order = orderProvider.getSalesOrderById(widget.soNumber);
     final item = order?.items.firstWhere(
-          (i) => i.itemCode == widget.itemCode,
+      (i) => i.itemCode == widget.itemCode,
       orElse: () => throw Exception('Item not found'),
     );
 
@@ -452,8 +477,6 @@ class _AddLotScreenState extends State<AddLotScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-
-
                 // Item information section
                 Card(
                   child: Padding(
@@ -557,7 +580,8 @@ class _AddLotScreenState extends State<AddLotScreen> {
                                     : 'Scanner is ready',
                                 style: TextStyle(
                                   fontWeight: FontWeight.bold,
-                                  color: _isScanning ? Colors.green : Colors.grey,
+                                  color:
+                                      _isScanning ? Colors.green : Colors.grey,
                                 ),
                               ),
                               Text(
@@ -570,7 +594,8 @@ class _AddLotScreenState extends State<AddLotScreen> {
                           ),
                         ),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 6),
                           decoration: BoxDecoration(
                             color: Colors.blue[700],
                             borderRadius: BorderRadius.circular(20),
@@ -701,14 +726,14 @@ class _AddLotScreenState extends State<AddLotScreen> {
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 IconButton(
-                                  icon:
-                                  const Icon(Icons.edit, color: Colors.blue),
+                                  icon: const Icon(Icons.edit,
+                                      color: Colors.blue),
                                   onPressed: () =>
                                       _startEditingSerial(serial.serialNo),
                                 ),
                                 IconButton(
-                                  icon:
-                                  const Icon(Icons.delete, color: Colors.red),
+                                  icon: const Icon(Icons.delete,
+                                      color: Colors.red),
                                   onPressed: () =>
                                       _removeSerial(context, serial.serialNo),
                                 ),
@@ -721,7 +746,6 @@ class _AddLotScreenState extends State<AddLotScreen> {
                   ),
                 ],
 
-
                 // Invisible TextField for keystroke scanning
                 if (AppConstants.scanningMode == 'keystroke')
                   SizedBox(
@@ -730,7 +754,8 @@ class _AddLotScreenState extends State<AddLotScreen> {
                     child: Focus(
                       onFocusChange: (hasFocus) {
                         if (hasFocus) {
-                          SystemChannels.textInput.invokeMethod('TextInput.hide');
+                          SystemChannels.textInput
+                              .invokeMethod('TextInput.hide');
                         }
                       },
                       child: TextFormField(
@@ -747,10 +772,12 @@ class _AddLotScreenState extends State<AddLotScreen> {
                         onChanged: (value) {
                           // Debounce keystroke input to prevent rapid scanning issues
                           _scanDebounceTimer?.cancel();
-                          _scanDebounceTimer = Timer(const Duration(milliseconds: 50), () {
+                          _scanDebounceTimer =
+                              Timer(const Duration(milliseconds: 50), () {
                             if (mounted && value.isNotEmpty) {
                               // Check if the value ends with Enter (common in barcode scanners)
-                              if (value.endsWith('\n') || value.endsWith('\r')) {
+                              if (value.endsWith('\n') ||
+                                  value.endsWith('\r')) {
                                 _processKeystrokeScan(value.trim());
                               }
                             }
@@ -758,7 +785,8 @@ class _AddLotScreenState extends State<AddLotScreen> {
                         },
                         onEditingComplete: () {
                           // This is called when Enter is pressed
-                          final scannedValue = _keystrokeScanController.text.trim();
+                          final scannedValue =
+                              _keystrokeScanController.text.trim();
                           if (scannedValue.isNotEmpty && !_isProcessingScan) {
                             _processKeystrokeScan(scannedValue);
                           }
@@ -803,7 +831,8 @@ class POAddLotScreen extends StatefulWidget {
 class _POAddLotScreenState extends State<POAddLotScreen> {
   final TextEditingController _serialController = TextEditingController();
   final TextEditingController _editSerialController = TextEditingController();
-  final TextEditingController _keystrokeScanController = TextEditingController();
+  final TextEditingController _keystrokeScanController =
+      TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final FocusNode _keystrokeScanFocusNode = FocusNode();
   final FocusNode _manualEntryFocusNode = FocusNode();
@@ -817,9 +846,17 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
   @override
   void initState() {
     super.initState();
-    // Ensure widget is mounted before starting scanning
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
+        AppLogger.log(
+          providerName: 'POAddLotScreen',
+          screenName: 'POAddLotScreen',
+          functionName: 'initState',
+          action: 'Add Lot dialog opened (PO)',
+          additionalInfo:
+              'PO: ${widget.poNumber}, Item: ${widget.itemCode}, Ordered Qty: ${widget.orderedQty}, Stock: ${widget.availableStock}, Scanning Mode: ${AppConstants.scanningMode}',
+        );
+
         if (AppConstants.scanningMode == 'keystroke') {
           _initializeKeystrokeScanning();
         } else {
@@ -828,7 +865,6 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
       }
     });
   }
-
 
   void _initializeKeystrokeScanning() {
     // Focus the invisible text field for keystroke scanning
@@ -839,7 +875,9 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
     _keystrokeScanFocusNode.addListener(() {
       if (!_keystrokeScanFocusNode.hasFocus) {
         Future.delayed(const Duration(milliseconds: 100), () {
-          if (mounted && !_manualEntryFocusNode.hasFocus && !_editSerialFocusNode.hasFocus) {
+          if (mounted &&
+              !_manualEntryFocusNode.hasFocus &&
+              !_editSerialFocusNode.hasFocus) {
             // Only regain focus if manual entry and edit are not being used
             _keystrokeScanFocusNode.requestFocus();
             SystemChannels.textInput.invokeMethod('TextInput.hide');
@@ -854,7 +892,9 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
   void _returnFocusToScanner() {
     if (AppConstants.scanningMode == 'keystroke' && mounted) {
       Future.delayed(const Duration(milliseconds: 100), () {
-        if (mounted && !_manualEntryFocusNode.hasFocus && !_editSerialFocusNode.hasFocus) {
+        if (mounted &&
+            !_manualEntryFocusNode.hasFocus &&
+            !_editSerialFocusNode.hasFocus) {
           _keystrokeScanFocusNode.requestFocus();
           SystemChannels.textInput.invokeMethod('TextInput.hide');
         }
@@ -892,7 +932,8 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     if (AppConstants.scanningMode == 'datawedge') {
-      final orderProvider = Provider.of<PurchaseOrderProvider>(context, listen: false);
+      final orderProvider =
+          Provider.of<PurchaseOrderProvider>(context, listen: false);
       // Now you can safely access Provider here
       orderProvider.addListener(_handleScanUpdate);
     }
@@ -901,7 +942,8 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
   Future<void> _startContinuousScanning() async {
     // Ensure widget is mounted before accessing Provider
     if (mounted) {
-      final orderProvider = Provider.of<PurchaseOrderProvider>(context, listen: false);
+      final orderProvider =
+          Provider.of<PurchaseOrderProvider>(context, listen: false);
       try {
         setState(() => _isScanning = true);
         await orderProvider.startScanning();
@@ -910,7 +952,8 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
         if (mounted) {
           setState(() => _isScanning = false);
         }
-        await TelegramLogger.sendLog("❌ [POAddLotScreen] Failed to start continuous scanning\nError: $e\nStack: $stackTrace");
+        await TelegramLogger.sendLog(
+            "❌ [POAddLotScreen] Failed to start continuous scanning\nError: $e\nStack: $stackTrace");
         AppAlerts.appToast(message: 'Failed to start scanner: ${e.toString()}');
       }
     }
@@ -932,21 +975,23 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
           _isScanning = false;
           return;
         }
-        
+
         try {
-          final orderProvider = Provider.of<PurchaseOrderProvider>(context, listen: false);
+          final orderProvider =
+              Provider.of<PurchaseOrderProvider>(context, listen: false);
           orderProvider.removeListener(_handleScanUpdate);
           try {
             await orderProvider.stopScanner();
           } catch (e, stackTrace) {
             debugPrint("Error stopping scanner: $e");
-            await TelegramLogger.sendLog("❌ [POAddLotScreen] Error stopping scanner\nError: $e\nStack: $stackTrace");
+            await TelegramLogger.sendLog(
+                "❌ [POAddLotScreen] Error stopping scanner\nError: $e\nStack: $stackTrace");
           }
         } catch (e) {
           // Provider is no longer available (widget is being disposed)
           debugPrint("Provider no longer available during dispose: $e");
         }
-        
+
         if (!isDisposing && mounted) {
           setState(() => _isScanning = false);
         } else {
@@ -954,14 +999,16 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
         }
       }
     } catch (e, stackTrace) {
-      await TelegramLogger.sendLog("❌ [POAddLotScreen] Error in _stopContinuousScanning\nError: $e\nStack: $stackTrace");
+      await TelegramLogger.sendLog(
+          "❌ [POAddLotScreen] Error in _stopContinuousScanning\nError: $e\nStack: $stackTrace");
     }
   }
 
   void _handleScanUpdate() {
     if (!mounted) return;
 
-    final orderProvider = Provider.of<PurchaseOrderProvider>(context, listen: false);
+    final orderProvider =
+        Provider.of<PurchaseOrderProvider>(context, listen: false);
     if (orderProvider.scannedBarcode != null &&
         orderProvider.scannedBarcode!.isNotEmpty) {
       _handleScannedBarcode(context, orderProvider.scannedBarcode!);
@@ -969,12 +1016,14 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
     }
   }
 
-  Future<void> _handleScannedBarcode(BuildContext context, String barcode) async {
+  Future<void> _handleScannedBarcode(
+      BuildContext context, String barcode) async {
     try {
       await _addSerial(context, barcode);
     } catch (e, stackTrace) {
       if (mounted) {
-        await TelegramLogger.sendLog("❌ [POAddLotScreen] Error handling barcode: $barcode\nError: $e\nStack: $stackTrace");
+        await TelegramLogger.sendLog(
+            "❌ [POAddLotScreen] Error handling barcode: $barcode\nError: $e\nStack: $stackTrace");
         AppAlerts.appToast(message: 'Error handling barcode: ${e.toString()}');
       }
     }
@@ -982,24 +1031,27 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
 
   Future<void> _processKeystrokeScan(String scannedValue) async {
     if (_isProcessingScan || scannedValue.isEmpty) return;
-    
+
     _isProcessingScan = true;
     _scanDebounceTimer?.cancel();
-    
+
     try {
       await _handleScannedBarcode(context, scannedValue);
       if (mounted) {
         _keystrokeScanController.clear();
         // Ensure focus is maintained for continuous scanning
         Future.delayed(const Duration(milliseconds: 10), () {
-          if (mounted && !_manualEntryFocusNode.hasFocus && !_editSerialFocusNode.hasFocus) {
+          if (mounted &&
+              !_manualEntryFocusNode.hasFocus &&
+              !_editSerialFocusNode.hasFocus) {
             _keystrokeScanFocusNode.requestFocus();
           }
         });
       }
     } catch (e, stackTrace) {
       if (mounted) {
-        await TelegramLogger.sendLog("❌ [POAddLotScreen] Error processing keystroke scan: $scannedValue\nError: $e\nStack: $stackTrace");
+        await TelegramLogger.sendLog(
+            "❌ [POAddLotScreen] Error processing keystroke scan: $scannedValue\nError: $e\nStack: $stackTrace");
         AppAlerts.appToast(message: 'Error processing scan: ${e.toString()}');
       }
     } finally {
@@ -1008,7 +1060,8 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
   }
 
   Future<void> _addSerial(BuildContext context, String serialNo) async {
-    final orderProvider = Provider.of<PurchaseOrderProvider>(context, listen: false);
+    final orderProvider =
+        Provider.of<PurchaseOrderProvider>(context, listen: false);
     try {
       await orderProvider.addSerialToItem(
         poNumber: widget.poNumber,
@@ -1027,7 +1080,8 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
   }
 
   void _removeSerial(BuildContext context, String serialNo) {
-    final orderProvider = Provider.of<PurchaseOrderProvider>(context, listen: false);
+    final orderProvider =
+        Provider.of<PurchaseOrderProvider>(context, listen: false);
     try {
       orderProvider.removeSerialFromItem(
         poNumber: widget.poNumber,
@@ -1073,7 +1127,8 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
         _editingSerialNo == null ||
         _editSerialController.text.isEmpty) return;
 
-    final orderProvider = Provider.of<PurchaseOrderProvider>(context, listen: false);
+    final orderProvider =
+        Provider.of<PurchaseOrderProvider>(context, listen: false);
     try {
       // First remove the old serial
       orderProvider.removeSerialFromItem(
@@ -1107,7 +1162,8 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
 
   // Method to validate duplicates and handle navigation
   Future<bool> _validateAndNavigateBack(BuildContext context) async {
-    final orderProvider = Provider.of<PurchaseOrderProvider>(context, listen: false);
+    final orderProvider =
+        Provider.of<PurchaseOrderProvider>(context, listen: false);
 
     // Check for duplicates before proceeding
     final hasDuplicates = orderProvider.hasDuplicateSerialsInItem(
@@ -1118,7 +1174,7 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
     if (hasDuplicates) {
       // Show alert about duplicates with positions
       final duplicatesWithPositions =
-      orderProvider.getDuplicateSerialsWithPositions(
+          orderProvider.getDuplicateSerialsWithPositions(
         poNumber: widget.poNumber,
         itemCode: widget.itemCode,
       );
@@ -1132,21 +1188,18 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                    'The following serial numbers are duplicated:'),
+                const Text('The following serial numbers are duplicated:'),
                 const SizedBox(height: 10),
                 ...duplicatesWithPositions.entries.map((entry) {
                   final serial = entry.key;
                   final positions = entry.value;
                   return Text(
                     '• $serial (positions: ${positions.join(', ')})',
-                    style: const TextStyle(
-                        fontWeight: FontWeight.bold),
+                    style: const TextStyle(fontWeight: FontWeight.bold),
                   );
                 }).toList(),
                 const SizedBox(height: 10),
-                const Text(
-                    'Please remove duplicates before proceeding.'),
+                const Text('Please remove duplicates before proceeding.'),
               ],
             ),
           ),
@@ -1161,8 +1214,16 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
       return false; // Don't allow navigation
     }
 
-    // If no duplicates, allow navigation
     await _stopContinuousScanning();
+
+    AppLogger.log(
+      providerName: 'POAddLotScreen',
+      screenName: 'POAddLotScreen',
+      functionName: '_validateAndNavigateBack_PO',
+      action: 'Add Lot dialog closed (PO)',
+      additionalInfo: 'PO: ${widget.poNumber}, Item: ${widget.itemCode}',
+    );
+
     return true;
   }
 
@@ -1171,7 +1232,7 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
     final orderProvider = Provider.of<PurchaseOrderProvider>(context);
     final order = orderProvider.getPurchaseOrderById(widget.poNumber);
     final item = order?.items.firstWhere(
-          (i) => i.itemCode == widget.itemCode,
+      (i) => i.itemCode == widget.itemCode,
       orElse: () => throw Exception('Item not found'),
     );
 
@@ -1227,8 +1288,6 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-
-
                 // Item information section
                 Card(
                   child: Padding(
@@ -1265,7 +1324,8 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
                                   fontSize: 16,
                                 ),
                               ),
-                              if (!_isExpanded && (item?.itemName.length ?? 0) > 50)
+                              if (!_isExpanded &&
+                                  (item?.itemName.length ?? 0) > 50)
                                 const Text(
                                   'View more',
                                   style: TextStyle(
@@ -1331,7 +1391,8 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
                                     : 'Scanner is ready',
                                 style: TextStyle(
                                   fontWeight: FontWeight.bold,
-                                  color: _isScanning ? Colors.green : Colors.grey,
+                                  color:
+                                      _isScanning ? Colors.green : Colors.grey,
                                 ),
                               ),
                               Text(
@@ -1344,7 +1405,8 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
                           ),
                         ),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 6),
                           decoration: BoxDecoration(
                             color: Colors.blue[700],
                             borderRadius: BorderRadius.circular(20),
@@ -1475,12 +1537,14 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 IconButton(
-                                  icon: const Icon(Icons.edit, color: Colors.blue),
+                                  icon: const Icon(Icons.edit,
+                                      color: Colors.blue),
                                   onPressed: () =>
                                       _startEditingSerial(serial.serialNo),
                                 ),
                                 IconButton(
-                                  icon: const Icon(Icons.delete, color: Colors.red),
+                                  icon: const Icon(Icons.delete,
+                                      color: Colors.red),
                                   onPressed: () =>
                                       _removeSerial(context, serial.serialNo),
                                 ),
@@ -1501,7 +1565,8 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
                     child: Focus(
                       onFocusChange: (hasFocus) {
                         if (hasFocus) {
-                          SystemChannels.textInput.invokeMethod('TextInput.hide');
+                          SystemChannels.textInput
+                              .invokeMethod('TextInput.hide');
                         }
                       },
                       child: TextFormField(
@@ -1518,10 +1583,12 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
                         onChanged: (value) {
                           // Debounce keystroke input to prevent rapid scanning issues
                           _scanDebounceTimer?.cancel();
-                          _scanDebounceTimer = Timer(const Duration(milliseconds: 50), () {
+                          _scanDebounceTimer =
+                              Timer(const Duration(milliseconds: 50), () {
                             if (mounted && value.isNotEmpty) {
                               // Check if the value ends with Enter (common in barcode scanners)
-                              if (value.endsWith('\n') || value.endsWith('\r')) {
+                              if (value.endsWith('\n') ||
+                                  value.endsWith('\r')) {
                                 _processKeystrokeScan(value.trim());
                               }
                             }
@@ -1529,7 +1596,8 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
                         },
                         onEditingComplete: () {
                           // This is called when Enter is pressed
-                          final scannedValue = _keystrokeScanController.text.trim();
+                          final scannedValue =
+                              _keystrokeScanController.text.trim();
                           if (scannedValue.isNotEmpty && !_isProcessingScan) {
                             _processKeystrokeScan(scannedValue);
                           }

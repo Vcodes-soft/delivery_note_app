@@ -1,3 +1,4 @@
+import 'package:delivery_note_app/services/app_logger.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class AppConstants {
@@ -5,20 +6,21 @@ class AppConstants {
   static int roundingPrecision = 2;
   static int roundingPrecisionForQuantity = 0;
   static String roundingRule = 'round';
-  
+
   // Scanning mode: 'datawedge' or 'keystroke'
   static const String _defaultScanningMode = 'keystroke';
   static String _cachedScanningMode = _defaultScanningMode;
-  
+
   // Get scanning mode synchronously (uses cached value)
   static String get scanningMode {
     // Ensure we always return a valid value
-    if (_cachedScanningMode != 'keystroke' && _cachedScanningMode != 'datawedge') {
+    if (_cachedScanningMode != 'keystroke' &&
+        _cachedScanningMode != 'datawedge') {
       _cachedScanningMode = _defaultScanningMode;
     }
     return _cachedScanningMode;
   }
-  
+
   // Load scanning mode from SharedPreferences
   static Future<void> loadScanningMode() async {
     try {
@@ -39,14 +41,24 @@ class AppConstants {
       _cachedScanningMode = _defaultScanningMode;
     }
   }
-  
+
   // Save scanning mode to SharedPreferences
   static Future<void> setScanningMode(String mode) async {
     if (mode != 'keystroke' && mode != 'datawedge') {
-      throw ArgumentError('Scanning mode must be either "keystroke" or "datawedge"');
+      throw ArgumentError(
+          'Scanning mode must be either "keystroke" or "datawedge"');
     }
+    final previousMode = _cachedScanningMode;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('scanningMode', mode);
     _cachedScanningMode = mode;
+
+    await AppLogger.log(
+      providerName: 'AppConstants',
+      screenName: 'AppConstants',
+      functionName: 'setScanningMode',
+      action: 'Scanning mode changed',
+      additionalInfo: 'Changed from "$previousMode" to "$mode"',
+    );
   }
 }

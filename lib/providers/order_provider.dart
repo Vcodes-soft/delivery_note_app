@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:delivery_note_app/models/delivery_note_details.dart';
 import 'package:delivery_note_app/models/delivery_note_header.dart';
 import 'package:delivery_note_app/models/inventory_detail_serialno.dart';
+import 'package:delivery_note_app/services/app_logger.dart';
 import 'package:delivery_note_app/utils/app_alerts.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_datawedge/flutter_datawedge.dart';
@@ -27,7 +28,7 @@ class OrderProvider with ChangeNotifier {
   String? _selectedCustomerName;
   String? get selectedLocationCode => _selectedLocationCode;
   String? get selectedCustomerName => _selectedCustomerName;
-  
+
   // Get unique locations and customers from orders
   List<String> get uniqueLocations {
     final locations = _salesOrders
@@ -38,13 +39,13 @@ class OrderProvider with ChangeNotifier {
     locations.sort();
     return locations;
   }
-  
+
   List<String> get uniqueCustomers {
     final customers = _salesOrders.map((o) => o.customerName).toSet().toList();
     customers.sort();
     return customers;
   }
-  
+
   bool isValidForPosting = true;
   String validationMessage = '';
   FlutterDataWedge? dataWedge;
@@ -131,21 +132,21 @@ class OrderProvider with ChangeNotifier {
           return false;
         }
       }
-      
+
       // Filter by location if selected
       if (_selectedLocationCode != null && _selectedLocationCode!.isNotEmpty) {
         if (order.locationCode != _selectedLocationCode) {
           return false;
         }
       }
-      
+
       // Filter by customer if selected
       if (_selectedCustomerName != null && _selectedCustomerName!.isNotEmpty) {
         if (order.customerName != _selectedCustomerName) {
           return false;
         }
       }
-      
+
       return true;
     }).toList();
     notifyListeners();
@@ -232,20 +233,19 @@ class OrderProvider with ChangeNotifier {
       final errorMsg = "Order not found for SO: $soNumber";
       print('ERROR: $errorMsg');
       await TelegramLogger.sendLog(
-        "❌ [OrderProvider] postDeliveryNote - Order Not Found\n"
-        "SO Number: $soNumber\n"
-        "Company Code: $companyCode\n"
-        "Location Code: $locationCode\n"
-        "Username: $username\n"
-        "Timestamp: ${DateTime.now().toIso8601String()}"
-      );
+          "❌ [OrderProvider] postDeliveryNote - Order Not Found\n"
+          "SO Number: $soNumber\n"
+          "Company Code: $companyCode\n"
+          "Location Code: $locationCode\n"
+          "Username: $username\n"
+          "Timestamp: ${DateTime.now().toIso8601String()}");
       AppAlerts.appToast(message: "Order not found for SO: $soNumber");
       return;
     }
 
     // Filter items to only those with qtyIssued > 0 for validation
     final itemsToProcess =
-    order.items.where((item) => item.qtyIssued > 0).toList();
+        order.items.where((item) => item.qtyIssued > 0).toList();
 
     // Validate each item's stock and quantities (only for items with qtyIssued > 0)
     for (var item in itemsToProcess) {
@@ -253,21 +253,21 @@ class OrderProvider with ChangeNotifier {
         if (item.stockQty < item.qtyIssued) {
           isValidForPosting = false;
           validationMessage +=
-          'Insufficient stock for ${item.itemCode} - ${item.itemName}. Available: ${item.stockQty}, Issued: ${item.qtyIssued}\n';
+              'Insufficient stock for ${item.itemCode} - ${item.itemName}. Available: ${item.stockQty}, Issued: ${item.qtyIssued}\n';
         }
       }
 
       if (item.qtyIssued > item.qtyOrdered) {
         isValidForPosting = false;
         validationMessage +=
-        'Quantity issued cannot exceed quantity ordered for ${item.itemCode} - ${item.itemName}. Issued: ${item.qtyIssued}, Ordered: ${item.qtyOrdered}\n';
+            'Quantity issued cannot exceed quantity ordered for ${item.itemCode} - ${item.itemName}. Issued: ${item.qtyIssued}, Ordered: ${item.qtyOrdered}\n';
       }
 
       if (item.serialYN && (item.qtyIssued > 0)) {
         if (item.serials.length != item.qtyIssued) {
           isValidForPosting = false;
           validationMessage +=
-          'Serial numbers required for ${item.itemCode} - ${item.itemName}. Expected: ${item.qtyOrdered}, Provided: ${item.serials.length}\n';
+              'Serial numbers required for ${item.itemCode} - ${item.itemName}. Expected: ${item.qtyOrdered}, Provided: ${item.serials.length}\n';
         }
 
         // Check for duplicate serial numbers in the database (ItemCode + SerialNo combination)
@@ -282,7 +282,7 @@ class OrderProvider with ChangeNotifier {
           if (count > 0) {
             isValidForPosting = false;
             validationMessage +=
-            'Serial number ${serial.serialNo} already exists for item ${item.itemCode} in the system\n';
+                'Serial number ${serial.serialNo} already exists for item ${item.itemCode} in the system\n';
           }
         }
       }
@@ -293,14 +293,13 @@ class OrderProvider with ChangeNotifier {
       final errorMsg = "Delivery note validation failed: \n $validationMessage";
       print('ERROR: $errorMsg');
       await TelegramLogger.sendLog(
-        "❌ [OrderProvider] postDeliveryNote - Validation Failed\n"
-        "SO Number: $soNumber\n"
-        "Company Code: $companyCode\n"
-        "Location Code: $locationCode\n"
-        "Username: $username\n"
-        "Validation Errors:\n$validationMessage\n"
-        "Timestamp: ${DateTime.now().toIso8601String()}"
-      );
+          "❌ [OrderProvider] postDeliveryNote - Validation Failed\n"
+          "SO Number: $soNumber\n"
+          "Company Code: $companyCode\n"
+          "Location Code: $locationCode\n"
+          "Username: $username\n"
+          "Validation Errors:\n$validationMessage\n"
+          "Timestamp: ${DateTime.now().toIso8601String()}");
       AppAlerts.appToast(message: errorMsg);
       return;
     }
@@ -311,15 +310,14 @@ class OrderProvider with ChangeNotifier {
       final errorMsg = "No items with quantity issued to process";
       print('ERROR: $errorMsg');
       await TelegramLogger.sendLog(
-        "❌ [OrderProvider] postDeliveryNote - No Items to Process\n"
-        "SO Number: $soNumber\n"
-        "Company Code: $companyCode\n"
-        "Location Code: $locationCode\n"
-        "Username: $username\n"
-        "Total Items in Order: ${order.items.length}\n"
-        "Items with qtyIssued > 0: ${itemsToProcess.length}\n"
-        "Timestamp: ${DateTime.now().toIso8601String()}"
-      );
+          "❌ [OrderProvider] postDeliveryNote - No Items to Process\n"
+          "SO Number: $soNumber\n"
+          "Company Code: $companyCode\n"
+          "Location Code: $locationCode\n"
+          "Username: $username\n"
+          "Total Items in Order: ${order.items.length}\n"
+          "Items with qtyIssued > 0: ${itemsToProcess.length}\n"
+          "Timestamp: ${DateTime.now().toIso8601String()}");
       AppAlerts.appToast(message: errorMsg);
       return;
     }
@@ -357,7 +355,8 @@ class OrderProvider with ChangeNotifier {
       );
 
       // Construct time string for SQL
-      final timeString = '${deliveryNoteHeader.dTime.hour.toString().padLeft(2, '0')}:${deliveryNoteHeader.dTime.minute.toString().padLeft(2, '0')}:00';
+      final timeString =
+          '${deliveryNoteHeader.dTime.hour.toString().padLeft(2, '0')}:${deliveryNoteHeader.dTime.minute.toString().padLeft(2, '0')}:00';
 
       final headerQuery = '''
     INSERT INTO DNoteHeader (
@@ -399,7 +398,8 @@ class OrderProvider with ChangeNotifier {
 
       // Post items with qtyIssued > 0
       int bsno = 1;
-      int globalSerialSno = 1; // Global counter for serial numbers across all items
+      int globalSerialSno =
+          1; // Global counter for serial numbers across all items
 
       for (var item in itemsToProcess) {
         final detail = DeliveryNoteDetail(
@@ -567,7 +567,7 @@ class OrderProvider with ChangeNotifier {
       print('ERROR in postDeliveryNote:');
       print('Message: $e');
       print('Stack trace: $stackTrace');
-      
+
       // Build detailed error log
       String errorDetails = "❌ [OrderProvider] postDeliveryNote - Exception\n"
           "SO Number: $soNumber\n"
@@ -577,14 +577,14 @@ class OrderProvider with ChangeNotifier {
           "Error Type: ${e.runtimeType}\n"
           "Error Message: $e\n"
           "Stack Trace:\n$stackTrace\n";
-      
+
       // Add order details if available
       if (order != null) {
         errorDetails += "Order Details:\n"
             "  Customer: ${order.customerName}\n"
             "  Items Count: ${order.items.length}\n"
             "  Items to Process: ${itemsToProcess.length}\n";
-        
+
         // Add item details
         if (itemsToProcess.isNotEmpty) {
           errorDetails += "  Items:\n";
@@ -595,9 +595,9 @@ class OrderProvider with ChangeNotifier {
           }
         }
       }
-      
+
       errorDetails += "Timestamp: ${DateTime.now().toIso8601String()}";
-      
+
       await TelegramLogger.sendLog(errorDetails);
       AppAlerts.appToast(message: errorMsg);
     } finally {
@@ -652,11 +652,28 @@ class OrderProvider with ChangeNotifier {
         debugPrint("Scanner initialized");
       }
 
+      await AppLogger.log(
+        providerName: 'OrderProvider',
+        screenName: 'OrderProvider',
+        functionName: 'initializeScanner',
+        action: 'Scanner initialized',
+        additionalInfo: 'DataWedge scanner initialized successfully',
+      );
+
       setLoading(false);
     } catch (e, stackTrace) {
       setLoading(false);
       debugPrint("Failed to initialize scanner: $e");
-      await TelegramLogger.sendLog("❌ [OrderProvider] Failed to initialize scanner\nError: $e\nStack: $stackTrace");
+      await AppLogger.logError(
+        providerName: 'OrderProvider',
+        screenName: 'OrderProvider',
+        functionName: 'initializeScanner',
+        action: 'Scanner initialization failed',
+        errorMessage: e.toString(),
+        stackTrace: stackTrace.toString(),
+      );
+      await TelegramLogger.sendLog(
+          "❌ [OrderProvider] Failed to initialize scanner\nError: $e\nStack: $stackTrace");
       rethrow;
     }
   }
@@ -697,9 +714,26 @@ class OrderProvider with ChangeNotifier {
       _isScannerActive = true;
       notifyListeners();
       debugPrint('Scanner started');
+
+      await AppLogger.log(
+        providerName: 'OrderProvider',
+        screenName: 'OrderProvider',
+        functionName: 'startScanning',
+        action: 'Scanner started',
+        additionalInfo: 'DataWedge scanner activated successfully',
+      );
     } catch (e, stackTrace) {
       debugPrint('Error starting scanner: $e');
-      await TelegramLogger.sendLog("❌ [OrderProvider] Error starting scanner\nError: $e\nStack: $stackTrace");
+      await AppLogger.logError(
+        providerName: 'OrderProvider',
+        screenName: 'OrderProvider',
+        functionName: 'startScanning',
+        action: 'Scanner start failed',
+        errorMessage: e.toString(),
+        stackTrace: stackTrace.toString(),
+      );
+      await TelegramLogger.sendLog(
+          "❌ [OrderProvider] Error starting scanner\nError: $e\nStack: $stackTrace");
       await stopScanner();
       rethrow;
     }
@@ -712,9 +746,26 @@ class OrderProvider with ChangeNotifier {
       _scanSubscription = null;
       _isScannerActive = false;
       debugPrint('Scanner stopped');
+
+      await AppLogger.log(
+        providerName: 'OrderProvider',
+        screenName: 'OrderProvider',
+        functionName: 'stopScanner',
+        action: 'Scanner stopped',
+        additionalInfo: 'DataWedge scanner deactivated',
+      );
     } catch (e, stackTrace) {
       debugPrint("Failed to stop scanner: $e");
-      await TelegramLogger.sendLog("❌ [OrderProvider] Failed to stop scanner\nError: $e\nStack: $stackTrace");
+      await AppLogger.logError(
+        providerName: 'OrderProvider',
+        screenName: 'OrderProvider',
+        functionName: 'stopScanner',
+        action: 'Scanner stop failed',
+        errorMessage: e.toString(),
+        stackTrace: stackTrace.toString(),
+      );
+      await TelegramLogger.sendLog(
+          "❌ [OrderProvider] Failed to stop scanner\nError: $e\nStack: $stackTrace");
       rethrow;
     } finally {
       notifyListeners();
@@ -767,7 +818,7 @@ class OrderProvider with ChangeNotifier {
     if (order == null) return false;
 
     final item = order.items.firstWhere(
-          (i) => i.itemCode == itemCode,
+      (i) => i.itemCode == itemCode,
       orElse: () => throw Exception('Item not found'),
     );
 
@@ -786,7 +837,7 @@ class OrderProvider with ChangeNotifier {
     if (order == null) return {};
 
     final item = order.items.firstWhere(
-          (i) => i.itemCode == itemCode,
+      (i) => i.itemCode == itemCode,
       orElse: () => throw Exception('Item not found'),
     );
 
@@ -815,7 +866,7 @@ class OrderProvider with ChangeNotifier {
     if (order == null) return [];
 
     final item = order.items.firstWhere(
-          (i) => i.itemCode == itemCode,
+      (i) => i.itemCode == itemCode,
       orElse: () => throw Exception('Item not found'),
     );
 
@@ -852,7 +903,8 @@ class OrderProvider with ChangeNotifier {
           await isSerialUnique(itemCode: itemCode, serialNo: serialNo);
       if (!isUnique) {
         return AppAlerts.appToast(
-            message: 'Serial number $serialNo already exists for item $itemCode');
+            message:
+                'Serial number $serialNo already exists for item $itemCode');
       }
 
       if (!item.nonInventory) {
@@ -877,11 +929,26 @@ class OrderProvider with ChangeNotifier {
       item.qtyIssued++;
       item.addSerial(serialNo);
       notifyListeners();
+
+      await AppLogger.log(
+        providerName: 'OrderProvider',
+        screenName: 'SalesOrderDetail',
+        functionName: 'addSerialToItem',
+        action: 'Serial added',
+        additionalInfo:
+            'SO: $soNumber, Item: $itemCode, Serial: $serialNo, New Qty: ${item.qtyIssued}/${item.qtyOrdered}',
+      );
     } catch (e) {
+      await AppLogger.logError(
+        providerName: 'OrderProvider',
+        screenName: 'SalesOrderDetail',
+        functionName: 'addSerialToItem',
+        action: 'Failed to add serial',
+        errorMessage: e.toString(),
+      );
       rethrow;
     }
   }
-
 
   void removeSerialFromItem({
     required String soNumber,
@@ -909,7 +976,23 @@ class OrderProvider with ChangeNotifier {
       item.qtyIssued -= 1;
 
       notifyListeners();
+
+      AppLogger.log(
+        providerName: 'OrderProvider',
+        screenName: 'SalesOrderDetail',
+        functionName: 'removeSerialFromItem',
+        action: 'Serial removed',
+        additionalInfo:
+            'SO: $soNumber, Item: $itemCode, Serial: $serialNo, New Qty: ${item.qtyIssued}/${item.qtyOrdered}',
+      );
     } catch (e) {
+      AppLogger.logError(
+        providerName: 'OrderProvider',
+        screenName: 'SalesOrderDetail',
+        functionName: 'removeSerialFromItem',
+        action: 'Failed to remove serial',
+        errorMessage: e.toString(),
+      );
       throw Exception('Failed to remove serial: ${e.toString()}');
     }
   }
@@ -921,7 +1004,8 @@ class OrderProvider with ChangeNotifier {
   }
 
   // Method to update item quantity directly via text field
-  void updateItemQuantity(String soNumber, String itemCode, double newQuantity) {
+  void updateItemQuantity(
+      String soNumber, String itemCode, double newQuantity) {
     final order = getSalesOrderById(soNumber);
     if (order == null) return;
 
@@ -929,24 +1013,34 @@ class OrderProvider with ChangeNotifier {
       (i) => i.itemCode == itemCode,
       orElse: () => throw Exception('Item not found'),
     );
-    
+
     // Validate the new quantity
     if (newQuantity < 0) {
       AppAlerts.appToast(message: 'Quantity cannot be negative');
       return;
     }
-    
+
     if (newQuantity > item.qtyOrdered) {
-      AppAlerts.appToast(message: 'Cannot exceed ordered quantity (${item.qtyOrdered})');
+      AppAlerts.appToast(
+          message: 'Cannot exceed ordered quantity (${item.qtyOrdered})');
       return;
     }
-    
+
     if (!item.nonInventory && newQuantity > item.stockQty) {
-      AppAlerts.appToast(message: 'Insufficient stock (${item.stockQty} available)');
+      AppAlerts.appToast(
+          message: 'Insufficient stock (${item.stockQty} available)');
       return;
     }
-    
+
     item.qtyIssued = newQuantity;
     notifyListeners();
+
+    AppLogger.log(
+      providerName: 'OrderProvider',
+      screenName: 'SalesOrderDetail',
+      functionName: 'updateItemQuantity',
+      action: 'Quantity updated via text field',
+      additionalInfo: 'SO: $soNumber, Item: $itemCode, New Qty: $newQuantity',
+    );
   }
 }

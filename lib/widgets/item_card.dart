@@ -1,9 +1,9 @@
 // item_card.dart
 import 'package:delivery_note_app/models/purchase_order_model.dart';
 import 'package:delivery_note_app/models/sales_order_model.dart';
+import 'package:delivery_note_app/services/app_logger.dart';
 import 'package:delivery_note_app/utils/app_alerts.dart';
 import 'package:flutter/material.dart';
-
 
 class ItemCard extends StatefulWidget {
   final dynamic item;
@@ -63,7 +63,7 @@ class _ItemCardState extends State<ItemCard> {
     double qtyIssued = isSalesOrderItem
         ? (widget.item as SalesOrderItem).qtyIssued
         : (widget.item as PurchaseOrderItem).qtyReceived;
-    
+
     // Update the text field if the quantity has changed externally
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_quantityController.text != qtyIssued.toString()) {
@@ -93,9 +93,10 @@ class _ItemCardState extends State<ItemCard> {
                         onTap: () => setState(() => _isExpanded = !_isExpanded),
                         child: Text(
                           widget.item.itemName,
-                          style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                            fontWeight: FontWeight.w600,
-                          ),
+                          style:
+                              Theme.of(context).textTheme.bodyLarge?.copyWith(
+                                    fontWeight: FontWeight.w600,
+                                  ),
                           maxLines: _isExpanded ? null : 1,
                           overflow: _isExpanded ? null : TextOverflow.ellipsis,
                         ),
@@ -127,8 +128,8 @@ class _ItemCardState extends State<ItemCard> {
             Text(
               widget.item.itemCode,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Colors.grey.shade600,
-              ),
+                    color: Colors.grey.shade600,
+                  ),
             ),
 
             const Divider(height: 20),
@@ -162,10 +163,20 @@ class _ItemCardState extends State<ItemCard> {
                             setState(() {
                               isSalesOrderItem
                                   ? (widget.item as SalesOrderItem).qtyIssued--
-                                  : (widget.item as PurchaseOrderItem).qtyReceived--;
+                                  : (widget.item as PurchaseOrderItem)
+                                      .qtyReceived--;
                             });
                             _updateQuantityController();
                             widget.onQuantityChanged?.call(qtyIssued - 1);
+
+                            AppLogger.log(
+                              providerName: 'ItemCard',
+                              screenName: 'SalesOrderDetail',
+                              functionName: 'decreaseQuantity',
+                              action: 'Quantity decreased',
+                              additionalInfo:
+                                  'Item: ${widget.item.itemCode}, Qty: ${qtyIssued - 1}/${qtyOrdered}',
+                            );
                           }
                         },
                       ),
@@ -178,12 +189,14 @@ class _ItemCardState extends State<ItemCard> {
                           style: Theme.of(context).textTheme.bodyLarge,
                           decoration: const InputDecoration(
                             border: OutlineInputBorder(),
-                            contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            contentPadding: EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 4),
                             isDense: true,
                           ),
                           onSubmitted: (value) {
                             final newQty = double.tryParse(value) ?? 0;
-                            widget.onQuantityUpdated?.call(widget.item.itemCode, newQty);
+                            widget.onQuantityUpdated
+                                ?.call(widget.item.itemCode, newQty);
                           },
                         ),
                       ),
@@ -191,22 +204,48 @@ class _ItemCardState extends State<ItemCard> {
                         icon: const Icon(Icons.add),
                         onPressed: () {
                           if (qtyIssued >= qtyOrdered) {
+                            AppLogger.log(
+                              providerName: 'ItemCard',
+                              screenName: 'SalesOrderDetail',
+                              functionName: 'increaseQuantity',
+                              action: 'Blocked - exceeds ordered quantity',
+                              additionalInfo:
+                                  'Item: ${widget.item.itemCode}, Max: $qtyOrdered',
+                            );
                             AppAlerts.appToast(
                                 message:
-                                'Cannot exceed ordered quantity ($qtyOrdered)');
+                                    'Cannot exceed ordered quantity ($qtyOrdered)');
                           } else if (isSalesOrderItem &&
                               qtyIssued >= stockQty) {
+                            AppLogger.log(
+                              providerName: 'ItemCard',
+                              screenName: 'SalesOrderDetail',
+                              functionName: 'increaseQuantity',
+                              action: 'Blocked - insufficient stock',
+                              additionalInfo:
+                                  'Item: ${widget.item.itemCode}, Stock: $stockQty',
+                            );
                             AppAlerts.appToast(
                                 message:
-                                'Insufficient stock ($stockQty available)');
+                                    'Insufficient stock ($stockQty available)');
                           } else {
                             setState(() {
                               isSalesOrderItem
                                   ? (widget.item as SalesOrderItem).qtyIssued++
-                                  : (widget.item as PurchaseOrderItem).qtyReceived++;
+                                  : (widget.item as PurchaseOrderItem)
+                                      .qtyReceived++;
                             });
                             _updateQuantityController();
                             widget.onQuantityChanged?.call(qtyIssued + 1);
+
+                            AppLogger.log(
+                              providerName: 'ItemCard',
+                              screenName: 'SalesOrderDetail',
+                              functionName: 'increaseQuantity',
+                              action: 'Quantity increased',
+                              additionalInfo:
+                                  'Item: ${widget.item.itemCode}, Qty: ${qtyIssued + 1}/$qtyOrdered',
+                            );
                           }
                         },
                       ),
@@ -223,8 +262,14 @@ class _ItemCardState extends State<ItemCard> {
                   width: double.infinity,
                   child: OutlinedButton.icon(
                     onPressed: widget.onAddLotPressed,
-                    icon:  Icon(Icons.add,color: Colors.blue[700],),
-                    label: Text('Add Lot',style: TextStyle(color: Colors.blue[700]),),
+                    icon: Icon(
+                      Icons.add,
+                      color: Colors.blue[700],
+                    ),
+                    label: Text(
+                      'Add Lot',
+                      style: TextStyle(color: Colors.blue[700]),
+                    ),
                   ),
                 ),
               ),
@@ -239,9 +284,9 @@ class _ItemCardState extends State<ItemCard> {
                     const Text('Added Serials:'),
                     const SizedBox(height: 4),
                     ...widget.item.serials.map((serial) => Text(
-                      '${serial.sNo}. ${serial.serialNo}',
-                      style: Theme.of(context).textTheme.bodySmall,
-                    )),
+                          '${serial.sNo}. ${serial.serialNo}',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        )),
                   ],
                 ),
               ),

@@ -1,5 +1,6 @@
 import 'package:delivery_note_app/providers/auth_provider.dart';
 import 'package:delivery_note_app/providers/order_provider.dart';
+import 'package:delivery_note_app/screens/log_list_screen.dart';
 import 'package:delivery_note_app/utils/app_constants.dart';
 import 'package:delivery_note_app/widgets/dashboard_card.dart';
 import 'package:delivery_note_app/widgets/widgets.dart';
@@ -52,7 +53,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
     // Show feedback to user
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Scanning mode changed to: ${value ? "DataWedge" : "Keystroke"}'),
+        content: Text(
+            'Scanning mode changed to: ${value ? "DataWedge" : "Keystroke"}'),
         duration: Duration(seconds: 2),
       ),
     );
@@ -104,11 +106,25 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ListTile(
                     leading: const Icon(Icons.qr_code_scanner),
                     title: const Text('Scanning Mode'),
-                    subtitle: Text(_isDataWedgeMode ? 'DataWedge' : 'Keystroke'),
+                    subtitle:
+                        Text(_isDataWedgeMode ? 'DataWedge' : 'Keystroke'),
                     trailing: Switch(
                       value: _isDataWedgeMode,
                       onChanged: _toggleScanningMode,
                     ),
+                  ),
+                  Divider(),
+                  ListTile(
+                    leading: const Icon(Icons.description),
+                    title: const Text('View Logs'),
+                    onTap: () {
+                      Navigator.pop(context);
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (_) => const LogListScreen()),
+                      );
+                    },
                   ),
                   Divider(),
                   ListTile(
@@ -240,6 +256,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   onTap: () =>
                       Navigator.of(context).pushNamed('/purchase-orders'),
                   image: 'assets/bg/purchase_order.jpeg',
+                ),
+                DashboardCard(
+                  title: 'Serial No',
+                  value: "",
+                  icon: Icons.qr_code_2,
+                  color: Colors.orange,
+                  onTap: () =>
+                      Navigator.of(context).pushNamed('/serial-search'),
+                  image: 'assets/bg/sales_order.jpeg',
                 ),
               ],
             ),
