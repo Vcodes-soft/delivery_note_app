@@ -11,7 +11,6 @@ import 'package:flutter_datawedge/flutter_datawedge.dart';
 import 'package:intl/intl.dart';
 import 'package:mssql_connection/mssql_connection.dart';
 import 'package:delivery_note_app/models/sales_order_model.dart';
-import 'package:delivery_note_app/services/telegram_logger.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class OrderProvider with ChangeNotifier {
@@ -228,17 +227,26 @@ class OrderProvider with ChangeNotifier {
     final String username = prefs.getString("username") ?? "";
     final String locationCode = prefs.getString('location') ?? "";
 
+    await AppLogger.log(
+      providerName: 'OrderProvider',
+      screenName: 'SalesOrderDetailScreen',
+      functionName: 'postDeliveryNote',
+      action: 'Delivery Note Posting Attempted',
+      additionalInfo:
+          'SO: $soNumber, Company: $companyCode, Location: $locationCode, User: $username',
+    );
+
     if (order == null) {
       setLoading(false);
       final errorMsg = "Order not found for SO: $soNumber";
       print('ERROR: $errorMsg');
-      await TelegramLogger.sendLog(
-          "❌ [OrderProvider] postDeliveryNote - Order Not Found\n"
-          "SO Number: $soNumber\n"
-          "Company Code: $companyCode\n"
-          "Location Code: $locationCode\n"
-          "Username: $username\n"
-          "Timestamp: ${DateTime.now().toIso8601String()}");
+      await AppLogger.logError(
+        providerName: 'OrderProvider',
+        screenName: 'SalesOrderDetailScreen',
+        functionName: 'postDeliveryNote',
+        action: 'Delivery Note Posting Failed - Order Not Found',
+        errorMessage: errorMsg,
+      );
       AppAlerts.appToast(message: "Order not found for SO: $soNumber");
       return;
     }
@@ -292,14 +300,13 @@ class OrderProvider with ChangeNotifier {
       setLoading(false);
       final errorMsg = "Delivery note validation failed: \n $validationMessage";
       print('ERROR: $errorMsg');
-      await TelegramLogger.sendLog(
-          "❌ [OrderProvider] postDeliveryNote - Validation Failed\n"
-          "SO Number: $soNumber\n"
-          "Company Code: $companyCode\n"
-          "Location Code: $locationCode\n"
-          "Username: $username\n"
-          "Validation Errors:\n$validationMessage\n"
-          "Timestamp: ${DateTime.now().toIso8601String()}");
+      await AppLogger.logError(
+        providerName: 'OrderProvider',
+        screenName: 'SalesOrderDetailScreen',
+        functionName: 'postDeliveryNote',
+        action: 'Delivery Note Posting Failed - Validation',
+        errorMessage: errorMsg,
+      );
       AppAlerts.appToast(message: errorMsg);
       return;
     }
@@ -309,15 +316,13 @@ class OrderProvider with ChangeNotifier {
       setLoading(false);
       final errorMsg = "No items with quantity issued to process";
       print('ERROR: $errorMsg');
-      await TelegramLogger.sendLog(
-          "❌ [OrderProvider] postDeliveryNote - No Items to Process\n"
-          "SO Number: $soNumber\n"
-          "Company Code: $companyCode\n"
-          "Location Code: $locationCode\n"
-          "Username: $username\n"
-          "Total Items in Order: ${order.items.length}\n"
-          "Items with qtyIssued > 0: ${itemsToProcess.length}\n"
-          "Timestamp: ${DateTime.now().toIso8601String()}");
+      await AppLogger.logError(
+        providerName: 'OrderProvider',
+        screenName: 'SalesOrderDetailScreen',
+        functionName: 'postDeliveryNote',
+        action: 'Delivery Note Posting Failed - No Items',
+        errorMessage: errorMsg,
+      );
       AppAlerts.appToast(message: errorMsg);
       return;
     }
@@ -553,6 +558,14 @@ class OrderProvider with ChangeNotifier {
       await _sqlConnection.writeData(updateSoQuery);
       print('SO status updated');
 
+      await AppLogger.log(
+        providerName: 'OrderProvider',
+        screenName: 'SalesOrderDetailScreen',
+        functionName: 'postDeliveryNote',
+        action: 'Delivery Note Posted Successfully',
+        additionalInfo:
+            'SO: $soNumber, DN: $nextDnNumber, Items: ${itemsToProcess.length}',
+      );
       AppAlerts.appToast(
           message: "Delivery note $nextDnNumber posted successfully",
           bgColor: Colors.green,
@@ -568,37 +581,15 @@ class OrderProvider with ChangeNotifier {
       print('Message: $e');
       print('Stack trace: $stackTrace');
 
-      // Build detailed error log
-      String errorDetails = "❌ [OrderProvider] postDeliveryNote - Exception\n"
-          "SO Number: $soNumber\n"
-          "Company Code: $companyCode\n"
-          "Location Code: $locationCode\n"
-          "Username: $username\n"
-          "Error Type: ${e.runtimeType}\n"
-          "Error Message: $e\n"
-          "Stack Trace:\n$stackTrace\n";
+      await AppLogger.logError(
+        providerName: 'OrderProvider',
+        screenName: 'SalesOrderDetailScreen',
+        functionName: 'postDeliveryNote',
+        action: 'Delivery Note Posting Failed - Exception',
+        errorMessage: e.toString(),
+        stackTrace: stackTrace.toString(),
+      );
 
-      // Add order details if available
-      if (order != null) {
-        errorDetails += "Order Details:\n"
-            "  Customer: ${order.customerName}\n"
-            "  Items Count: ${order.items.length}\n"
-            "  Items to Process: ${itemsToProcess.length}\n";
-
-        // Add item details
-        if (itemsToProcess.isNotEmpty) {
-          errorDetails += "  Items:\n";
-          for (var item in itemsToProcess) {
-            errorDetails += "    - ${item.itemCode} (${item.itemName}): "
-                "Ordered: ${item.qtyOrdered}, Issued: ${item.qtyIssued}, "
-                "Stock: ${item.stockQty}, Serialized: ${item.serialYN}\n";
-          }
-        }
-      }
-
-      errorDetails += "Timestamp: ${DateTime.now().toIso8601String()}";
-
-      await TelegramLogger.sendLog(errorDetails);
       AppAlerts.appToast(message: errorMsg);
     } finally {
       setLoading(false);
@@ -672,8 +663,6 @@ class OrderProvider with ChangeNotifier {
         errorMessage: e.toString(),
         stackTrace: stackTrace.toString(),
       );
-      await TelegramLogger.sendLog(
-          "❌ [OrderProvider] Failed to initialize scanner\nError: $e\nStack: $stackTrace");
       rethrow;
     }
   }
@@ -732,8 +721,6 @@ class OrderProvider with ChangeNotifier {
         errorMessage: e.toString(),
         stackTrace: stackTrace.toString(),
       );
-      await TelegramLogger.sendLog(
-          "❌ [OrderProvider] Error starting scanner\nError: $e\nStack: $stackTrace");
       await stopScanner();
       rethrow;
     }
@@ -764,8 +751,6 @@ class OrderProvider with ChangeNotifier {
         errorMessage: e.toString(),
         stackTrace: stackTrace.toString(),
       );
-      await TelegramLogger.sendLog(
-          "❌ [OrderProvider] Failed to stop scanner\nError: $e\nStack: $stackTrace");
       rethrow;
     } finally {
       notifyListeners();
@@ -929,23 +914,7 @@ class OrderProvider with ChangeNotifier {
       item.qtyIssued++;
       item.addSerial(serialNo);
       notifyListeners();
-
-      await AppLogger.log(
-        providerName: 'OrderProvider',
-        screenName: 'SalesOrderDetail',
-        functionName: 'addSerialToItem',
-        action: 'Serial added',
-        additionalInfo:
-            'SO: $soNumber, Item: $itemCode, Serial: $serialNo, New Qty: ${item.qtyIssued}/${item.qtyOrdered}',
-      );
     } catch (e) {
-      await AppLogger.logError(
-        providerName: 'OrderProvider',
-        screenName: 'SalesOrderDetail',
-        functionName: 'addSerialToItem',
-        action: 'Failed to add serial',
-        errorMessage: e.toString(),
-      );
       rethrow;
     }
   }

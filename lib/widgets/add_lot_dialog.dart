@@ -3,11 +3,11 @@ import 'package:delivery_note_app/providers/order_provider.dart';
 import 'package:delivery_note_app/services/app_logger.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:delivery_note_app/providers/purchase_order_provider.dart';
 import 'package:delivery_note_app/utils/app_alerts.dart';
 import 'package:delivery_note_app/utils/app_constants.dart';
-import 'package:delivery_note_app/services/telegram_logger.dart';
 import 'package:lottie/lottie.dart';
 
 class AddLotScreen extends StatefulWidget {
@@ -42,6 +42,9 @@ class _AddLotScreenState extends State<AddLotScreen> {
   String? _editingSerialNo;
   Timer? _scanDebounceTimer;
   bool _isProcessingScan = false;
+  int _scansDetectedCount = 0;
+  int _barcodesAddedCount = 0;
+  final List<String> _scanEventLog = [];
 
   @override
   void initState() {
@@ -150,8 +153,14 @@ class _AddLotScreenState extends State<AddLotScreen> {
         if (mounted) {
           setState(() => _isScanning = false);
         }
-        await TelegramLogger.sendLog(
-            "❌ [AddLotScreen] Failed to start continuous scanning\nError: $e\nStack: $stackTrace");
+        await AppLogger.logError(
+          providerName: 'AddLotScreen',
+          screenName: 'AddLotScreen',
+          functionName: '_startContinuousScanning',
+          action: 'Failed to start continuous scanning',
+          errorMessage: e.toString(),
+          stackTrace: stackTrace.toString(),
+        );
         AppAlerts.appToast(message: 'Failed to start scanner: ${e.toString()}');
       }
     }
@@ -182,8 +191,14 @@ class _AddLotScreenState extends State<AddLotScreen> {
             await orderProvider.stopScanner();
           } catch (e, stackTrace) {
             debugPrint("Error stopping scanner: $e");
-            await TelegramLogger.sendLog(
-                "❌ [AddLotScreen] Error stopping scanner\nError: $e\nStack: $stackTrace");
+            await AppLogger.logError(
+              providerName: 'AddLotScreen',
+              screenName: 'AddLotScreen',
+              functionName: '_stopContinuousScanning',
+              action: 'Error stopping scanner',
+              errorMessage: e.toString(),
+              stackTrace: stackTrace.toString(),
+            );
           }
         } catch (e) {
           // Provider is no longer available (widget is being disposed)
@@ -197,8 +212,15 @@ class _AddLotScreenState extends State<AddLotScreen> {
         }
       }
     } catch (e, stackTrace) {
-      await TelegramLogger.sendLog(
-          "❌ [AddLotScreen] Error in _stopContinuousScanning\nError: $e\nStack: $stackTrace");
+      debugPrint("Error in _stopContinuousScanning: $e");
+      await AppLogger.logError(
+        providerName: 'AddLotScreen',
+        screenName: 'AddLotScreen',
+        functionName: '_stopContinuousScanning',
+        action: 'Error in _stopContinuousScanning',
+        errorMessage: e.toString(),
+        stackTrace: stackTrace.toString(),
+      );
     }
   }
 
@@ -215,9 +237,52 @@ class _AddLotScreenState extends State<AddLotScreen> {
 
   Future<void> _handleScannedBarcode(
       BuildContext context, String barcode) async {
+    _scansDetectedCount++;
+    final scanTime = DateFormat('HH:mm:ss').format(DateTime.now());
+    final orderProvider = Provider.of<OrderProvider>(context, listen: false);
+
+    int countBefore = orderProvider
+            .getSalesOrderById(widget.soNumber)
+            ?.items
+            .firstWhere((i) => i.itemCode == widget.itemCode,
+                orElse: () => throw Exception('Item not found'))
+            .serials
+            .length ??
+        0;
+
     try {
       await _addSerial(context, barcode);
+      final countAfter = orderProvider
+              .getSalesOrderById(widget.soNumber)
+              ?.items
+              .firstWhere((i) => i.itemCode == widget.itemCode,
+                  orElse: () => throw Exception('Item not found'))
+              .serials
+              .length ??
+          0;
+      final added = countAfter > countBefore;
+      _scanEventLog.add('$scanTime $barcode (${added ? 'Added' : 'Rejected'})');
+      if (added) _barcodesAddedCount++;
+
+      // Persisted immediately (not buffered) so a scan is never lost if the
+      // app crashes or is force-closed before the session ends.
+      await AppLogger.log(
+        providerName: 'AddLotScreen',
+        screenName: 'AddLotScreen',
+        functionName: '_handleScannedBarcode',
+        action: added ? 'Barcode Scanned - Added' : 'Barcode Scanned - Rejected',
+        additionalInfo:
+            'SO: ${widget.soNumber}, Item: ${widget.itemCode}, Barcode: $barcode',
+      );
     } catch (e) {
+      _scanEventLog.add('$scanTime $barcode (Error: $e)');
+      await AppLogger.logError(
+        providerName: 'AddLotScreen',
+        screenName: 'AddLotScreen',
+        functionName: '_handleScannedBarcode',
+        action: 'Barcode Scan Failed',
+        errorMessage: e.toString(),
+      );
       if (mounted) {
         AppAlerts.appToast(message: 'Error handling barcode: ${e.toString()}');
       }
@@ -243,8 +308,16 @@ class _AddLotScreenState extends State<AddLotScreen> {
           }
         });
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
       if (mounted) {
+        await AppLogger.logError(
+          providerName: 'AddLotScreen',
+          screenName: 'AddLotScreen',
+          functionName: '_processKeystrokeScan',
+          action: 'Error processing keystroke scan',
+          errorMessage: e.toString(),
+          stackTrace: stackTrace.toString(),
+        );
         AppAlerts.appToast(message: 'Error processing scan: ${e.toString()}');
       }
     } finally {
@@ -410,7 +483,9 @@ class _AddLotScreenState extends State<AddLotScreen> {
       screenName: 'AddLotScreen',
       functionName: '_validateAndNavigateBack_SO',
       action: 'Add Lot dialog closed (SO)',
-      additionalInfo: 'SO: ${widget.soNumber}, Item: ${widget.itemCode}',
+      additionalInfo: 'SO: ${widget.soNumber}, Item: ${widget.itemCode}, '
+          'Scans Detected: $_scansDetectedCount, Barcodes Added: $_barcodesAddedCount, '
+          'Scan Log: ${_scanEventLog.isEmpty ? 'none' : _scanEventLog.join(' | ')}',
     );
 
     return true;
@@ -842,6 +917,9 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
   String? _editingSerialNo;
   Timer? _scanDebounceTimer;
   bool _isProcessingScan = false;
+  int _scansDetectedCount = 0;
+  int _barcodesAddedCount = 0;
+  final List<String> _scanEventLog = [];
 
   @override
   void initState() {
@@ -952,8 +1030,14 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
         if (mounted) {
           setState(() => _isScanning = false);
         }
-        await TelegramLogger.sendLog(
-            "❌ [POAddLotScreen] Failed to start continuous scanning\nError: $e\nStack: $stackTrace");
+        await AppLogger.logError(
+          providerName: 'POAddLotScreen',
+          screenName: 'POAddLotScreen',
+          functionName: '_startContinuousScanning',
+          action: 'Failed to start continuous scanning',
+          errorMessage: e.toString(),
+          stackTrace: stackTrace.toString(),
+        );
         AppAlerts.appToast(message: 'Failed to start scanner: ${e.toString()}');
       }
     }
@@ -984,8 +1068,14 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
             await orderProvider.stopScanner();
           } catch (e, stackTrace) {
             debugPrint("Error stopping scanner: $e");
-            await TelegramLogger.sendLog(
-                "❌ [POAddLotScreen] Error stopping scanner\nError: $e\nStack: $stackTrace");
+            await AppLogger.logError(
+              providerName: 'POAddLotScreen',
+              screenName: 'POAddLotScreen',
+              functionName: '_stopContinuousScanning',
+              action: 'Error stopping scanner',
+              errorMessage: e.toString(),
+              stackTrace: stackTrace.toString(),
+            );
           }
         } catch (e) {
           // Provider is no longer available (widget is being disposed)
@@ -999,8 +1089,15 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
         }
       }
     } catch (e, stackTrace) {
-      await TelegramLogger.sendLog(
-          "❌ [POAddLotScreen] Error in _stopContinuousScanning\nError: $e\nStack: $stackTrace");
+      debugPrint("Error in _stopContinuousScanning: $e");
+      await AppLogger.logError(
+        providerName: 'POAddLotScreen',
+        screenName: 'POAddLotScreen',
+        functionName: '_stopContinuousScanning',
+        action: 'Error in _stopContinuousScanning',
+        errorMessage: e.toString(),
+        stackTrace: stackTrace.toString(),
+      );
     }
   }
 
@@ -1018,12 +1115,54 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
 
   Future<void> _handleScannedBarcode(
       BuildContext context, String barcode) async {
+    _scansDetectedCount++;
+    final scanTime = DateFormat('HH:mm:ss').format(DateTime.now());
+    final orderProvider =
+        Provider.of<PurchaseOrderProvider>(context, listen: false);
+
+    int countBefore = orderProvider
+            .getPurchaseOrderById(widget.poNumber)
+            ?.items
+            .firstWhere((i) => i.itemCode == widget.itemCode,
+                orElse: () => throw Exception('Item not found'))
+            .serials
+            .length ??
+        0;
+
     try {
       await _addSerial(context, barcode);
-    } catch (e, stackTrace) {
+      final countAfter = orderProvider
+              .getPurchaseOrderById(widget.poNumber)
+              ?.items
+              .firstWhere((i) => i.itemCode == widget.itemCode,
+                  orElse: () => throw Exception('Item not found'))
+              .serials
+              .length ??
+          0;
+      final added = countAfter > countBefore;
+      _scanEventLog.add('$scanTime $barcode (${added ? 'Added' : 'Rejected'})');
+      if (added) _barcodesAddedCount++;
+
+      // Persisted immediately (not buffered) so a scan is never lost if the
+      // app crashes or is force-closed before the session ends.
+      await AppLogger.log(
+        providerName: 'POAddLotScreen',
+        screenName: 'POAddLotScreen',
+        functionName: '_handleScannedBarcode',
+        action: added ? 'Barcode Scanned - Added' : 'Barcode Scanned - Rejected',
+        additionalInfo:
+            'PO: ${widget.poNumber}, Item: ${widget.itemCode}, Barcode: $barcode',
+      );
+    } catch (e) {
+      _scanEventLog.add('$scanTime $barcode (Error: $e)');
+      await AppLogger.logError(
+        providerName: 'POAddLotScreen',
+        screenName: 'POAddLotScreen',
+        functionName: '_handleScannedBarcode',
+        action: 'Barcode Scan Failed',
+        errorMessage: e.toString(),
+      );
       if (mounted) {
-        await TelegramLogger.sendLog(
-            "❌ [POAddLotScreen] Error handling barcode: $barcode\nError: $e\nStack: $stackTrace");
         AppAlerts.appToast(message: 'Error handling barcode: ${e.toString()}');
       }
     }
@@ -1050,8 +1189,14 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
       }
     } catch (e, stackTrace) {
       if (mounted) {
-        await TelegramLogger.sendLog(
-            "❌ [POAddLotScreen] Error processing keystroke scan: $scannedValue\nError: $e\nStack: $stackTrace");
+        await AppLogger.logError(
+          providerName: 'POAddLotScreen',
+          screenName: 'POAddLotScreen',
+          functionName: '_processKeystrokeScan',
+          action: 'Error processing keystroke scan',
+          errorMessage: e.toString(),
+          stackTrace: stackTrace.toString(),
+        );
         AppAlerts.appToast(message: 'Error processing scan: ${e.toString()}');
       }
     } finally {
@@ -1221,7 +1366,9 @@ class _POAddLotScreenState extends State<POAddLotScreen> {
       screenName: 'POAddLotScreen',
       functionName: '_validateAndNavigateBack_PO',
       action: 'Add Lot dialog closed (PO)',
-      additionalInfo: 'PO: ${widget.poNumber}, Item: ${widget.itemCode}',
+      additionalInfo: 'PO: ${widget.poNumber}, Item: ${widget.itemCode}, '
+          'Scans Detected: $_scansDetectedCount, Barcodes Added: $_barcodesAddedCount, '
+          'Scan Log: ${_scanEventLog.isEmpty ? 'none' : _scanEventLog.join(' | ')}',
     );
 
     return true;

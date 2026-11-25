@@ -10,7 +10,7 @@ import 'package:intl/intl.dart';
 import 'package:mssql_connection/mssql_connection.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:delivery_note_app/models/purchase_order_model.dart';
-import 'package:delivery_note_app/services/telegram_logger.dart';
+import 'package:delivery_note_app/services/app_logger.dart';
 
 class PurchaseOrderProvider with ChangeNotifier {
   final MssqlConnection _sqlConnection = MssqlConnection.getInstance();
@@ -171,8 +171,14 @@ class PurchaseOrderProvider with ChangeNotifier {
     } catch (e, stackTrace) {
       setLoading(false);
       debugPrint("Failed to initialize scanner: $e");
-      await TelegramLogger.sendLog("❌ [PurchaseOrderProvider] Failed to initialize scanner\nError: $e\nStack: $stackTrace");
-      // setErrorMessage("Scanner initialization failed. Please try again.");
+      await AppLogger.logError(
+        providerName: 'PurchaseOrderProvider',
+        screenName: 'PurchaseOrderProvider',
+        functionName: 'initializeScanner',
+        action: 'Scanner initialization failed',
+        errorMessage: e.toString(),
+        stackTrace: stackTrace.toString(),
+      );
       rethrow;
     }
   }
@@ -217,7 +223,14 @@ class PurchaseOrderProvider with ChangeNotifier {
       debugPrint('Scanner started');
     } catch (e, stackTrace) {
       debugPrint('Error starting scanner: $e');
-      await TelegramLogger.sendLog("❌ [PurchaseOrderProvider] Error starting scanner\nError: $e\nStack: $stackTrace");
+      await AppLogger.logError(
+        providerName: 'PurchaseOrderProvider',
+        screenName: 'PurchaseOrderProvider',
+        functionName: 'startScanning',
+        action: 'Scanner start failed',
+        errorMessage: e.toString(),
+        stackTrace: stackTrace.toString(),
+      );
       await stopScanner();
       rethrow;
     }
@@ -232,7 +245,14 @@ class PurchaseOrderProvider with ChangeNotifier {
       debugPrint('Scanner stopped');
     } catch (e, stackTrace) {
       debugPrint("Failed to stop scanner: $e");
-      await TelegramLogger.sendLog("❌ [PurchaseOrderProvider] Failed to stop scanner\nError: $e\nStack: $stackTrace");
+      await AppLogger.logError(
+        providerName: 'PurchaseOrderProvider',
+        screenName: 'PurchaseOrderProvider',
+        functionName: 'stopScanner',
+        action: 'Scanner stop failed',
+        errorMessage: e.toString(),
+        stackTrace: stackTrace.toString(),
+      );
       rethrow;
     } finally {
       // notifyListeners();
@@ -271,17 +291,25 @@ class PurchaseOrderProvider with ChangeNotifier {
     final String username = prefs.getString("username") ?? "";
     final String locationCode = prefs.getString('location') ?? "";
 
+    await AppLogger.log(
+      providerName: 'PurchaseOrderProvider',
+      screenName: 'PurchaseOrderDetailScreen',
+      functionName: 'postGoodsReceipt',
+      action: 'GRN Posting Attempted',
+      additionalInfo:
+          'PO: $poNumber, Company: $companyCode, Location: $locationCode, User: $username',
+    );
+
     if (order == null) {
       setLoading(false);
       final errorMsg = "Order not found for PO: $poNumber";
       print('ERROR: $errorMsg');
-      await TelegramLogger.sendLog(
-        "❌ [PurchaseOrderProvider] postGoodsReceipt - Order Not Found\n"
-        "PO Number: $poNumber\n"
-        "Company Code: $companyCode\n"
-        "Location Code: $locationCode\n"
-        "Username: $username\n"
-        "Timestamp: ${DateTime.now().toIso8601String()}"
+      await AppLogger.logError(
+        providerName: 'PurchaseOrderProvider',
+        screenName: 'PurchaseOrderDetailScreen',
+        functionName: 'postGoodsReceipt',
+        action: 'GRN Posting Failed - Order Not Found',
+        errorMessage: errorMsg,
       );
       AppAlerts.appToast(message: errorMsg);
       return;
@@ -330,14 +358,12 @@ class PurchaseOrderProvider with ChangeNotifier {
       setLoading(false);
       final errorMsg = "GRN validation failed: \n $validationMessage";
       print('ERROR: $errorMsg');
-      await TelegramLogger.sendLog(
-        "❌ [PurchaseOrderProvider] postGoodsReceipt - Validation Failed\n"
-        "PO Number: $poNumber\n"
-        "Company Code: $companyCode\n"
-        "Location Code: $locationCode\n"
-        "Username: $username\n"
-        "Validation Errors:\n$validationMessage\n"
-        "Timestamp: ${DateTime.now().toIso8601String()}"
+      await AppLogger.logError(
+        providerName: 'PurchaseOrderProvider',
+        screenName: 'PurchaseOrderDetailScreen',
+        functionName: 'postGoodsReceipt',
+        action: 'GRN Posting Failed - Validation',
+        errorMessage: errorMsg,
       );
       AppAlerts.appToast(message: errorMsg);
       return;
@@ -348,15 +374,12 @@ class PurchaseOrderProvider with ChangeNotifier {
       setLoading(false);
       final errorMsg = "No items with quantity received to process";
       print('ERROR: $errorMsg');
-      await TelegramLogger.sendLog(
-        "❌ [PurchaseOrderProvider] postGoodsReceipt - No Items to Process\n"
-        "PO Number: $poNumber\n"
-        "Company Code: $companyCode\n"
-        "Location Code: $locationCode\n"
-        "Username: $username\n"
-        "Total Items in Order: ${order.items.length}\n"
-        "Items with qtyReceived > 0: ${itemsToProcess.length}\n"
-        "Timestamp: ${DateTime.now().toIso8601String()}"
+      await AppLogger.logError(
+        providerName: 'PurchaseOrderProvider',
+        screenName: 'PurchaseOrderDetailScreen',
+        functionName: 'postGoodsReceipt',
+        action: 'GRN Posting Failed - No Items',
+        errorMessage: errorMsg,
       );
       AppAlerts.appToast(message: errorMsg);
       return;
@@ -365,6 +388,9 @@ class PurchaseOrderProvider with ChangeNotifier {
     try {
       // 1. Get the next GRN number and increment it if necessary
       String nextGrnNumber = await getNextGrnNumber();
+
+      // Currency and exchange rate come from the PO header created in the ERP
+      final poCurrency = await getPoCurrency(order.companyCode, order.poNumber);
 
       // 2. Create GRNHeader
       final grnHeader = {
@@ -376,8 +402,8 @@ class PurchaseOrderProvider with ChangeNotifier {
         'RefNo': order.refNo.toString() == "null"?"":order.refNo.toString(),
         'InvStat': 'N', // Not invoiced
         'Status': 'O', // Open status
-        'CurCode': 'AED',
-        'ExRate': 1,
+        'CurCode': poCurrency.curCode,
+        'ExRate': poCurrency.exRate,
         'Discount': 0,
         'GrnType': 'P', // Goods receipt type
         'Qty':
@@ -570,6 +596,14 @@ class PurchaseOrderProvider with ChangeNotifier {
       Navigator.pop(context);
       fetchPurchaseOrders();
 
+      await AppLogger.log(
+        providerName: 'PurchaseOrderProvider',
+        screenName: 'PurchaseOrderDetailScreen',
+        functionName: 'postGoodsReceipt',
+        action: 'GRN Posted Successfully',
+        additionalInfo:
+            'PO: $poNumber, GRN: $nextGrnNumber, Items: ${itemsToProcess.length}',
+      );
       AppAlerts.appToast(message: "GRN $nextGrnNumber posted successfully");
     } catch (e, stackTrace) {
       setLoading(false);
@@ -577,41 +611,62 @@ class PurchaseOrderProvider with ChangeNotifier {
       print('ERROR in postGoodsReceipt:');
       print('Message: $e');
       print('Stack trace: $stackTrace');
-      
-      // Build detailed error log
-      String errorDetails = "❌ [PurchaseOrderProvider] postGoodsReceipt - Exception\n"
-          "PO Number: $poNumber\n"
-          "Company Code: $companyCode\n"
-          "Location Code: $locationCode\n"
-          "Username: $username\n"
-          "Error Type: ${e.runtimeType}\n"
-          "Error Message: $e\n"
-          "Stack Trace:\n$stackTrace\n";
-      
-      // Add order details if available
-      if (order != null) {
-        errorDetails += "Order Details:\n"
-            "  Supplier: ${order.supplierName}\n"
-            "  Items Count: ${order.items.length}\n"
-            "  Items to Process: ${itemsToProcess.length}\n";
-        
-        // Add item details
-        if (itemsToProcess.isNotEmpty) {
-          errorDetails += "  Items:\n";
-          for (var item in itemsToProcess) {
-            errorDetails += "    - ${item.itemCode} (${item.itemName}): "
-                "Ordered: ${item.qtyOrdered}, Received: ${item.qtyReceived}, "
-                "Serialized: ${item.serialYN}\n";
-          }
-        }
-      }
-      
-      errorDetails += "Timestamp: ${DateTime.now().toIso8601String()}";
-      
-      await TelegramLogger.sendLog(errorDetails);
+
+      await AppLogger.logError(
+        providerName: 'PurchaseOrderProvider',
+        screenName: 'PurchaseOrderDetailScreen',
+        functionName: 'postGoodsReceipt',
+        action: 'GRN Posting Failed - Exception',
+        errorMessage: e.toString(),
+        stackTrace: stackTrace.toString(),
+      );
+
       AppAlerts.appToast(message: errorMsg);
     } finally {
       setLoading(false);
+    }
+  }
+
+  /// Reads CurCode and ExRate from PoHeader for the given PO.
+  /// Falls back to AED / 1 (the previous hardcoded values) if the PO
+  /// has no currency or the lookup fails, and logs the fallback.
+  Future<({String curCode, double exRate})> getPoCurrency(
+      String companyCode, String poNumber) async {
+    const fallback = (curCode: 'AED', exRate: 1.0);
+    try {
+      final query = '''
+    SELECT TOP 1 CurCode, ExRate
+    FROM PoHeader
+    WHERE CmpyCode = '${_escapeSqlString(companyCode)}'
+      AND PoNumber = '${_escapeSqlString(poNumber)}'
+  ''';
+
+      final result = await _sqlConnection.getData(query);
+      final rows = jsonDecode(result) as List;
+      if (rows.isEmpty) {
+        throw Exception('PO $poNumber not found in PoHeader');
+      }
+
+      final row = rows.first as Map<String, dynamic>;
+      final curCode = row['CurCode']?.toString().trim() ?? '';
+      final exRate = double.tryParse(row['ExRate']?.toString() ?? '') ?? 0;
+
+      if (curCode.isEmpty || curCode == 'null' || exRate <= 0) {
+        throw Exception(
+            'Invalid currency on PO $poNumber: CurCode=$curCode, ExRate=$exRate');
+      }
+
+      return (curCode: curCode, exRate: exRate);
+    } catch (e) {
+      print('WARNING: Using fallback currency AED/1 for PO $poNumber: $e');
+      await AppLogger.logError(
+        providerName: 'PurchaseOrderProvider',
+        screenName: 'PurchaseOrderDetailScreen',
+        functionName: 'getPoCurrency',
+        action: 'PO Currency Lookup Failed - Using AED/1',
+        errorMessage: e.toString(),
+      );
+      return fallback;
     }
   }
 

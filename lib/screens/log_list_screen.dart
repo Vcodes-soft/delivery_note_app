@@ -1,7 +1,10 @@
 import 'dart:io';
+import 'package:delivery_note_app/services/app_logger.dart';
 import 'package:delivery_note_app/services/telegram_logger.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+
+const Color _brandYellow = Color.fromRGBO(255, 213, 3, 1.0);
 
 class LogListScreen extends StatefulWidget {
   const LogListScreen({super.key});
@@ -28,43 +31,19 @@ class _LogListScreenState extends State<LogListScreen> {
     });
 
     try {
-      // Logs stored in device storage: /storage/emulated/0/Android/data/<package>/files/Logs/Logs/<date>/
-      final logsPath =
-          '/storage/emulated/0/Android/data/com.example.delivery_note_app/files/Logs/Logs';
+      final logsDirectory = await AppLogger.logsDirectory();
 
-      final logsDirectory = Directory(logsPath);
+      final allItems = await logsDirectory.list().toList();
+      final logFiles = allItems.where((f) => f.path.endsWith('.log')).toList();
+      logFiles.sort((a, b) => b.path.compareTo(a.path));
 
-      debugPrint('=== LOG DEBUG ===');
-      debugPrint('Checking: $logsPath');
-      debugPrint('Exists: ${await logsDirectory.exists()}');
-
-      if (await logsDirectory.exists()) {
-        final allItems = await logsDirectory.list(recursive: true).toList();
-        debugPrint('Total items found: ${allItems.length}');
-        for (var item in allItems) {
-          debugPrint('  - ${item.path}');
-        }
-
-        final logFiles =
-            allItems.where((f) => f.path.endsWith('.log')).toList();
-        debugPrint('Log files: ${logFiles.length}');
-
-        setState(() {
-          _logFiles = logFiles;
-          _applyFilter();
-          _isLoading = false;
-        });
-      } else {
-        debugPrint('Directory does not exist!');
-        setState(() {
-          _logFiles = [];
-          _filteredLogFiles = [];
-          _isLoading = false;
-        });
-      }
-    } catch (e, stack) {
+      setState(() {
+        _logFiles = logFiles;
+        _applyFilter();
+        _isLoading = false;
+      });
+    } catch (e) {
       debugPrint('Error loading logs: $e');
-      debugPrint('Stack: $stack');
       setState(() {
         _logFiles = [];
         _filteredLogFiles = [];
@@ -79,7 +58,7 @@ class _LogListScreenState extends State<LogListScreen> {
     } else {
       _filteredLogFiles = _logFiles.where((file) {
         final fileName = file.path.split('/').last;
-        final dateStr = fileName.replaceAll('log_', '').replaceAll('.log', '');
+        final dateStr = fileName.replaceAll('.log', '');
         try {
           final fileDate = DateFormat('ddMMyyyy').parse(dateStr);
           return _isSameDay(fileDate, _selectedDate!);
@@ -103,8 +82,8 @@ class _LogListScreenState extends State<LogListScreen> {
       builder: (context, child) {
         return Theme(
           data: Theme.of(context).copyWith(
-            colorScheme: ColorScheme.light(
-              primary: Color.fromRGBO(255, 213, 3, 1.0),
+            colorScheme: const ColorScheme.light(
+              primary: _brandYellow,
             ),
           ),
           child: child!,
@@ -127,85 +106,10 @@ class _LogListScreenState extends State<LogListScreen> {
     });
   }
 
-  Future<void> _viewLogFile(FileSystemEntity file) async {
-    final content = await File(file.path).readAsString();
-
-    if (!mounted) return;
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        height: MediaQuery.of(context).size.height * 0.85,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        child: Column(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    Color.fromRGBO(255, 213, 3, 1.0),
-                    Color.fromRGBO(253, 215, 64, 1.0),
-                  ],
-                ),
-                borderRadius:
-                    const BorderRadius.vertical(top: Radius.circular(20)),
-              ),
-              child: Row(
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.close, color: Colors.black),
-                    onPressed: () => Navigator.pop(context),
-                  ),
-                  Expanded(
-                    child: Text(
-                      file.path.split('/').last,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.black,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.send, color: Colors.black),
-                    onPressed: () {
-                      Navigator.pop(context);
-                      _showUploadDialog(file);
-                    },
-                  ),
-                ],
-              ),
-            ),
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(16),
-                child: SelectableText(
-                  content,
-                  style: const TextStyle(
-                    fontFamily: 'monospace',
-                    fontSize: 12,
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _showUploadDialog(FileSystemEntity file) {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => _UploadLogDialog(file: file),
+  void _viewLogFile(FileSystemEntity file) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => LogDetailScreen(file: file)),
     );
   }
 
@@ -213,7 +117,7 @@ class _LogListScreenState extends State<LogListScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: Color.fromRGBO(255, 213, 3, 1.0),
+        backgroundColor: _brandYellow,
         title: const Text('App Logs', style: TextStyle(color: Colors.black)),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Colors.black),
@@ -307,12 +211,12 @@ class _LogListScreenState extends State<LogListScreen> {
                               leading: Container(
                                 padding: const EdgeInsets.all(8),
                                 decoration: BoxDecoration(
-                                  color: Color.fromRGBO(255, 213, 3, 0.2),
+                                  color: _brandYellow.withOpacity(0.2),
                                   borderRadius: BorderRadius.circular(8),
                                 ),
-                                child: Icon(
+                                child: const Icon(
                                   Icons.description,
-                                  color: Color.fromRGBO(255, 213, 3, 1.0),
+                                  color: _brandYellow,
                                 ),
                               ),
                               title: Text(
@@ -348,6 +252,251 @@ class _LogListScreenState extends State<LogListScreen> {
                           );
                         },
                       ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class LogDetailScreen extends StatefulWidget {
+  final FileSystemEntity file;
+
+  const LogDetailScreen({super.key, required this.file});
+
+  @override
+  State<LogDetailScreen> createState() => _LogDetailScreenState();
+}
+
+class _LogDetailScreenState extends State<LogDetailScreen> {
+  List<_LogRecord> _records = [];
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadRecords();
+  }
+
+  Future<void> _loadRecords() async {
+    final content = await File(widget.file.path).readAsString();
+    final records = content
+        .split('\n')
+        .where((line) => line.trim().isNotEmpty)
+        .map(_LogRecord.fromLine)
+        .toList()
+        .reversed
+        .toList();
+
+    if (mounted) {
+      setState(() {
+        _records = records;
+        _isLoading = false;
+      });
+    }
+  }
+
+  void _showUploadDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => _UploadLogDialog(file: widget.file),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final fileName = widget.file.path.split('/').last;
+
+    return Scaffold(
+      appBar: AppBar(
+        backgroundColor: _brandYellow,
+        title: Text(fileName, style: const TextStyle(color: Colors.black)),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.black),
+          onPressed: () => Navigator.pop(context),
+        ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.send, color: Colors.black),
+            onPressed: _showUploadDialog,
+          ),
+        ],
+      ),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : Column(
+              children: [
+                Container(
+                  width: double.infinity,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  color: Colors.grey.shade100,
+                  child: Text(
+                    '${_records.length} record${_records.length == 1 ? '' : 's'}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.grey.shade700,
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: _records.isEmpty
+                      ? Center(
+                          child: Text(
+                            'No records in this file',
+                            style: TextStyle(color: Colors.grey.shade600),
+                          ),
+                        )
+                      : ListView.builder(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 8),
+                          itemCount: _records.length,
+                          itemBuilder: (context, index) =>
+                              _LogRecordCard(record: _records[index]),
+                        ),
+                ),
+              ],
+            ),
+    );
+  }
+}
+
+/// A single parsed line from a log file, written as tab-delimited fields by
+/// [AppLogger]: timestamp, level, provider, screen, function, action, details.
+class _LogRecord {
+  final String timestamp;
+  final String level;
+  final String provider;
+  final String screen;
+  final String function;
+  final String action;
+  final String details;
+
+  _LogRecord({
+    required this.timestamp,
+    required this.level,
+    required this.provider,
+    required this.screen,
+    required this.function,
+    required this.action,
+    required this.details,
+  });
+
+  factory _LogRecord.fromLine(String line) {
+    final parts = line.split('\t');
+    String field(int i) => parts.length > i ? parts[i] : '';
+    return _LogRecord(
+      timestamp: field(0),
+      level: field(1).isEmpty ? 'INFO' : field(1),
+      provider: field(2),
+      screen: field(3),
+      function: field(4),
+      action: field(5),
+      details: parts.length > 6 ? parts.sublist(6).join('\t') : '',
+    );
+  }
+
+  bool get isError => level.toUpperCase() == 'ERROR';
+
+  bool get isSuccess =>
+      !isError &&
+      (action.toLowerCase().contains('success') ||
+          details.toLowerCase().contains('success'));
+}
+
+class _LogRecordCard extends StatelessWidget {
+  final _LogRecord record;
+
+  const _LogRecordCard({required this.record});
+
+  Color get _statusColor {
+    if (record.isError) return Colors.red.shade600;
+    if (record.isSuccess) return Colors.green.shade600;
+    return Colors.blueGrey.shade500;
+  }
+
+  String get _statusLabel {
+    if (record.isError) return 'ERROR';
+    if (record.isSuccess) return 'SUCCESS';
+    return 'INFO';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        borderRadius: BorderRadius.circular(10),
+        border: Border(left: BorderSide(color: _statusColor, width: 4)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 3,
+            offset: const Offset(0, 1),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  record.action,
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w600, fontSize: 14),
+                ),
+              ),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: _statusColor.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  _statusLabel,
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                    color: _statusColor,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Provider: ${record.provider} | Screen: ${record.screen} | Function: ${record.function}',
+            style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+          ),
+          if (record.details.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade100,
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: SelectableText(
+                record.details,
+                style: const TextStyle(fontFamily: 'monospace', fontSize: 11),
+              ),
+            ),
+          ],
+          const SizedBox(height: 6),
+          Align(
+            alignment: Alignment.centerRight,
+            child: Text(
+              record.timestamp,
+              style: TextStyle(fontSize: 10, color: Colors.grey.shade500),
+            ),
           ),
         ],
       ),
@@ -434,8 +583,8 @@ class _UploadLogDialogState extends State<_UploadLogDialog> {
                   value: _progress / 100,
                   strokeWidth: 8,
                   backgroundColor: Colors.grey.shade200,
-                  valueColor: AlwaysStoppedAnimation<Color>(
-                    Color.fromRGBO(255, 213, 3, 1.0),
+                  valueColor: const AlwaysStoppedAnimation<Color>(
+                    _brandYellow,
                   ),
                 ),
               ),
@@ -469,7 +618,7 @@ class _UploadLogDialogState extends State<_UploadLogDialog> {
               child: ElevatedButton(
                 onPressed: () => Navigator.pop(context),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Color.fromRGBO(255, 213, 3, 1.0),
+                  backgroundColor: _brandYellow,
                   foregroundColor: Colors.black,
                   padding: const EdgeInsets.symmetric(vertical: 14),
                   shape: RoundedRectangleBorder(
