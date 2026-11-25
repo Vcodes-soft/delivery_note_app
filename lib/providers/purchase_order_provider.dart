@@ -628,46 +628,35 @@ class PurchaseOrderProvider with ChangeNotifier {
   }
 
   /// Reads CurCode and ExRate from PoHeader for the given PO.
-  /// Falls back to AED / 1 (the previous hardcoded values) if the PO
-  /// has no currency or the lookup fails, and logs the fallback.
+  /// Throws if the PO is missing or has no valid currency / rate, so the
+  /// GRN is not posted. Called before any GRN rows are written.
   Future<({String curCode, double exRate})> getPoCurrency(
       String companyCode, String poNumber) async {
-    const fallback = (curCode: 'AED', exRate: 1.0);
-    try {
-      final query = '''
+    final query = '''
     SELECT TOP 1 CurCode, ExRate
     FROM PoHeader
     WHERE CmpyCode = '${_escapeSqlString(companyCode)}'
       AND PoNumber = '${_escapeSqlString(poNumber)}'
   ''';
 
-      final result = await _sqlConnection.getData(query);
-      final rows = jsonDecode(result) as List;
-      if (rows.isEmpty) {
-        throw Exception('PO $poNumber not found in PoHeader');
-      }
-
-      final row = rows.first as Map<String, dynamic>;
-      final curCode = row['CurCode']?.toString().trim() ?? '';
-      final exRate = double.tryParse(row['ExRate']?.toString() ?? '') ?? 0;
-
-      if (curCode.isEmpty || curCode == 'null' || exRate <= 0) {
-        throw Exception(
-            'Invalid currency on PO $poNumber: CurCode=$curCode, ExRate=$exRate');
-      }
-
-      return (curCode: curCode, exRate: exRate);
-    } catch (e) {
-      print('WARNING: Using fallback currency AED/1 for PO $poNumber: $e');
-      await AppLogger.logError(
-        providerName: 'PurchaseOrderProvider',
-        screenName: 'PurchaseOrderDetailScreen',
-        functionName: 'getPoCurrency',
-        action: 'PO Currency Lookup Failed - Using AED/1',
-        errorMessage: e.toString(),
-      );
-      return fallback;
+    final result = await _sqlConnection.getData(query);
+    final rows = jsonDecode(result) as List;
+    if (rows.isEmpty) {
+      throw Exception('PO $poNumber not found in PoHeader');
     }
+
+    final row = rows.first as Map<String, dynamic>;
+    final curCode = row['CurCode']?.toString().trim() ?? '';
+    final exRate = double.tryParse(row['ExRate']?.toString() ?? '') ?? 0;
+
+    if (curCode.isEmpty || curCode == 'null') {
+      throw Exception('Currency not set on PO $poNumber');
+    }
+    if (exRate <= 0) {
+      throw Exception('Invalid exchange rate on PO $poNumber: $exRate');
+    }
+
+    return (curCode: curCode, exRate: exRate);
   }
 
   Future<String> getNextGrnNumber() async {

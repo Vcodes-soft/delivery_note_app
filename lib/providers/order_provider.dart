@@ -330,6 +330,9 @@ class OrderProvider with ChangeNotifier {
     try {
       String nextDnNumber = await _getNextDnNumber();
 
+      // Currency and exchange rate come from the SO header created in the ERP
+      final soCurrency = await getSoCurrency(order.companyCode, order.soNumber);
+
       final deliveryNoteHeader = DeliveryNoteHeader(
         cmpyCode: order.companyCode,
         dnNumber: nextDnNumber,
@@ -342,8 +345,8 @@ class OrderProvider with ChangeNotifier {
         status: 'O',
         invStat: 'N',
         discount: 0,
-        curCode: 'AED',
-        exRate: 1,
+        curCode: soCurrency.curCode,
+        exRate: soCurrency.exRate,
         dnType: 'S',
         qty: itemsToProcess
             .fold(0.0, (double sum, item) => sum + item.qtyIssued)
@@ -594,6 +597,38 @@ class OrderProvider with ChangeNotifier {
     } finally {
       setLoading(false);
     }
+  }
+
+  /// Reads CurCode and ExRate from SoHeader for the given SO.
+  /// Throws if the SO is missing or has no valid currency / rate, so the
+  /// delivery note is not posted. Called before any DN rows are written.
+  Future<({String curCode, double exRate})> getSoCurrency(
+      String companyCode, String soNumber) async {
+    final query = '''
+    SELECT TOP 1 CurCode, ExRate
+    FROM SoHeader
+    WHERE CmpyCode = '${_escapeSqlString(companyCode)}'
+      AND SoNumber = '${_escapeSqlString(soNumber)}'
+  ''';
+
+    final result = await _sqlConnection.getData(query);
+    final rows = jsonDecode(result) as List;
+    if (rows.isEmpty) {
+      throw Exception('SO $soNumber not found in SoHeader');
+    }
+
+    final row = rows.first as Map<String, dynamic>;
+    final curCode = row['CurCode']?.toString().trim() ?? '';
+    final exRate = double.tryParse(row['ExRate']?.toString() ?? '') ?? 0;
+
+    if (curCode.isEmpty || curCode == 'null') {
+      throw Exception('Currency not set on SO $soNumber');
+    }
+    if (exRate <= 0) {
+      throw Exception('Invalid exchange rate on SO $soNumber: $exRate');
+    }
+
+    return (curCode: curCode, exRate: exRate);
   }
 
   Future<String> _getNextDnNumber() async {
